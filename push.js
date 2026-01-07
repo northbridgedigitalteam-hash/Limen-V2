@@ -3,15 +3,16 @@ class PushManager {
     constructor() {
         this.notificationCooldown = 2 * 60 * 60 * 1000; // 2 hours
         this.lastNotificationTime = null;
-        this.maxDailyNotifications = 2;
+        this.maxDailyNotifications = 3;
         this.notificationCheckInterval = null;
+        this.environmentCheckInterval = null;
         
         this.init();
     }
 
     async init() {
         // Check for notification permission
-        this.checkPermission();
+        await this.checkPermission();
         
         // Start periodic checks
         this.startPeriodicChecks();
@@ -19,7 +20,7 @@ class PushManager {
         // Listen for visibility changes
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                this.checkNotifications();
+                setTimeout(() => this.checkNotifications(), 5000);
             }
         });
     }
@@ -38,17 +39,27 @@ class PushManager {
         
         if (Notification.permission === 'default') {
             try {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                    STORAGE.enableNotifications();
-                    return true;
-                }
+                // Request permission on user interaction
+                const requestPermission = () => {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            STORAGE.enableNotifications();
+                            console.log('Notification permission granted');
+                        }
+                    });
+                };
+                
+                // Request on first button click
+                document.addEventListener('click', function onClick() {
+                    requestPermission();
+                    document.removeEventListener('click', onClick);
+                }, { once: true });
+                
             } catch (error) {
                 console.log('Error requesting notification permission:', error);
             }
         }
         
-        STORAGE.disableNotifications();
         return false;
     }
 
@@ -63,8 +74,8 @@ class PushManager {
             this.checkNotifications();
         }, 30 * 60 * 1000);
         
-        // Initial check after 1 minute
-        setTimeout(() => this.checkNotifications(), 60000);
+        // Initial check after 2 minutes
+        setTimeout(() => this.checkNotifications(), 120000);
     }
 
     // Check if we should send a notification
@@ -117,7 +128,7 @@ class PushManager {
         const hour = now.getHours();
         
         // Rule 1: No sessions today and it's past morning
-        if (history.length === 0 && hour >= 10) {
+        if (history.length === 0 && hour >= 10 && hour <= 20) {
             return true;
         }
         
@@ -145,7 +156,15 @@ class PushManager {
             const lastSessionTime = new Date(lastSession.timestamp);
             const hoursSinceLast = (now - lastSessionTime) / (1000 * 60 * 60);
             
-            if (hoursSinceLast >= 4 && hour >= 9 && hour <= 21) {
+            if (hoursSinceLast >= 6 && hour >= 9 && hour <= 21) {
+                return true;
+            }
+        }
+        
+        // Rule 5: Check environment patterns
+        if (window.environmentSensor) {
+            const loadEstimate = window.environmentSensor.estimateCognitiveLoad();
+            if (loadEstimate && loadEstimate.confidence > 0.5) {
                 return true;
             }
         }
@@ -188,6 +207,11 @@ class PushManager {
                 notification.onclick = () => {
                     window.focus();
                     notification.close();
+                    
+                    // Could trigger app to open intervention
+                    if (window.app) {
+                        window.app.showScreen('state');
+                    }
                 };
                 
                 // Auto-close after 10 seconds
@@ -236,6 +260,11 @@ class PushManager {
             clearInterval(this.notificationCheckInterval);
             this.notificationCheckInterval = null;
         }
+        
+        if (this.environmentCheckInterval) {
+            clearInterval(this.environmentCheckInterval);
+            this.environmentCheckInterval = null;
+        }
     }
 }
 
@@ -246,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         pushManager = new PushManager();
         window.pushManager = pushManager;
-    }, 2000);
+    }, 3000);
 });
 
 // Handle page unload
