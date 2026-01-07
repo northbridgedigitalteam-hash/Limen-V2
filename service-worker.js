@@ -1,5 +1,5 @@
 // Service Worker for PWA functionality
-const CACHE_NAME = 'limen-v1.0.1';
+const CACHE_NAME = 'limen-v1.3.0';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -9,6 +9,8 @@ const ASSETS_TO_CACHE = [
     '/interventions.js',
     '/storage.js',
     '/push.js',
+    '/audio.js',
+    '/environment.js',
     '/manifest.json',
     '/browserconfig.xml',
     '/icon-192.png',
@@ -57,46 +59,45 @@ self.addEventListener('fetch', event => {
     // Skip chrome-extension requests
     if (event.request.url.startsWith('chrome-extension://')) return;
     
-    event.respondWith(
-        caches.match(event.request)
-            .then(cachedResponse => {
-                if (cachedResponse) {
-                    console.log('Serving from cache:', event.request.url);
-                    return cachedResponse;
-                }
-                
-                console.log('Fetching from network:', event.request.url);
-                return fetch(event.request)
-                    .then(response => {
-                        // Don't cache if not a success response
-                        if (!response || response.status !== 200 || response.type !== 'basic') {
+    // For same-origin requests, try cache first
+    if (event.request.url.startsWith(self.location.origin)) {
+        event.respondWith(
+            caches.match(event.request)
+                .then(cachedResponse => {
+                    if (cachedResponse) {
+                        return cachedResponse;
+                    }
+                    
+                    return fetch(event.request)
+                        .then(response => {
+                            // Don't cache if not a success response
+                            if (!response || response.status !== 200 || response.type !== 'basic') {
+                                return response;
+                            }
+                            
+                            // Clone the response
+                            const responseToCache = response.clone();
+                            
+                            caches.open(CACHE_NAME)
+                                .then(cache => {
+                                    cache.put(event.request, responseToCache);
+                                });
+                            
                             return response;
-                        }
-                        
-                        // Clone the response
-                        const responseToCache = response.clone();
-                        
-                        caches.open(CACHE_NAME)
-                            .then(cache => {
-                                cache.put(event.request, responseToCache);
+                        })
+                        .catch(() => {
+                            // If fetch fails and this is a page navigation, return offline page
+                            if (event.request.mode === 'navigate') {
+                                return caches.match('/index.html');
+                            }
+                            return new Response('Network error', {
+                                status: 408,
+                                headers: { 'Content-Type': 'text/plain' }
                             });
-                        
-                        return response;
-                    })
-                    .catch(error => {
-                        console.log('Fetch failed:', error);
-                        // Return offline page or fallback
-                        if (event.request.url.endsWith('.html') || 
-                            event.request.url.endsWith('/')) {
-                            return caches.match('/index.html');
-                        }
-                        return new Response('Network error', {
-                            status: 408,
-                            headers: { 'Content-Type': 'text/plain' }
                         });
-                    });
-            })
-    );
+                })
+        );
+    }
 });
 
 // Push event - handle push notifications
@@ -178,4 +179,5 @@ self.addEventListener('sync', event => {
 async function syncSessions() {
     // Future: Sync session data with server
     console.log('Syncing sessions...');
+    return Promise.resolve();
 }
