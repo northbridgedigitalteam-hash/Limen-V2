@@ -479,12 +479,21 @@ class LimenApp {
     checkEmergencyButtonVisibility() {
         const history = STORAGE.getSessionHistory(1); // Last day
         const recentNegativeFeedback = history.filter(s => s.feedback === 'no').length;
-        const shouldShow = recentNegativeFeedback >= 2 || 
-                          (history.length >= 5 && recentNegativeFeedback >= 1);
+        const totalSessions = STORAGE.getStats()?.totalSessions || 0;
+        
+        // More lenient conditions for showing emergency button
+        const shouldShow = recentNegativeFeedback >= 1 || 
+                          totalSessions >= 2 ||
+                          history.length >= 3;
         
         const emergencyReset = document.getElementById('emergency-reset');
         if (emergencyReset) {
-            emergencyReset.style.display = shouldShow ? 'block' : 'none';
+            emergencyReset.style.display = 'block'; // Always show
+            if (shouldShow) {
+                emergencyReset.classList.add('active');
+            } else {
+                emergencyReset.classList.remove('active');
+            }
         }
     }
 
@@ -567,3 +576,313 @@ if ('serviceWorker' in navigator) {
         }, 1000);
     });
 }
+
+// Ambient Audio Manager
+class AudioManager {
+    constructor() {
+        this.audioContext = null;
+        this.currentSound = null;
+        this.isEnabled = false;
+        this.volume = 0.1;
+        
+        this.checkPreference();
+    }
+    
+    async init() {
+        // Create audio context on user interaction
+        if (window.AudioContext || window.webkitAudioContext) {
+            try {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('Audio context created');
+                
+                // Resume context if suspended
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
+            } catch (error) {
+                console.log('Audio context creation failed:', error);
+            }
+        }
+    }
+    
+    checkPreference() {
+        const data = STORAGE.getData();
+        this.isEnabled = data?.userProfile?.preferences?.ambientAudio || false;
+    }
+    
+    // Generate soothing brown noise
+    playBrownNoise(duration = 90) {
+        if (!this.isEnabled || !this.audioContext) return;
+        
+        try {
+            const bufferSize = this.audioContext.sampleRate * duration;
+            const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+            const output = buffer.getChannelData(0);
+            
+            let lastOut = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                const brown = (lastOut + (0.02 * white)) / 1.02;
+                lastOut = brown;
+                output[i] = brown * 3.5;
+            }
+            
+            const source = this.audioContext.createBufferSource();
+            source.buffer = buffer;
+            
+            // Create gain node for fade in/out
+            const gainNode = this.audioContext.createGain();
+            source.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            const now = this.audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(this.volume, now + 1);
+            gainNode.gain.linearRampToValueAtTime(0, now + duration - 1);
+            
+            source.start();
+            this.currentSound = source;
+            
+            // Auto-stop after duration
+            source.stop(now + duration);
+            
+            // Clean up after completion
+            source.onended = () => {
+                this.currentSound = null;
+            };
+            
+        } catch (error) {
+            console.log('Error playing brown noise:', error);
+        }
+    }
+    
+    // Gentle frequency sweep for focus
+    playFocusTone(duration = 60) {
+        if (!this.isEnabled || !this.audioContext) return;
+        
+        try {
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(432, this.audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(528, this.audioContext.currentTime + duration/2);
+            
+            gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(this.volume, this.audioContext.currentTime + 1);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + duration);
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            oscillator.start();
+            oscillator.stop(this.audioContext.currentTime + duration);
+            
+            this.currentSound = oscillator;
+            
+            oscillator.onended = () => {
+                this.currentSound = null;
+            };
+            
+        } catch (error) {
+            console.log('Error playing focus tone:', error);
+        }
+    }
+    
+    stopAll() {
+        if (this.currentSound) {
+            try {
+                this.currentSound.stop();
+                this.currentSound = null;
+            } catch (error) {
+                console.log('Error stopping audio:', error);
+            }
+        }
+    }
+    
+    toggle(enabled) {
+        this.isEnabled = enabled;
+        // Use updateProfile instead of updateSetting
+        STORAGE.updateProfile('preferences', {
+            ...(STORAGE.getData()?.userProfile?.preferences || {}),
+            ambientAudio: enabled
+        });
+        
+        if (!enabled) {
+            this.stopAll();
+        }
+        
+        return enabled;
+    }
+    
+    setVolume(level) {
+        this.volume = Math.max(0, Math.min(1, level));
+    }
+}
+
+// Initialize audio manager
+let audioManager = null;
+
+// Initialize on first user interaction
+function initAudioOnInteraction() {
+    if (!audioManager && (window.AudioContext || window.webkitAudioContext)) {
+        audioManager = new AudioManager();
+        audioManager.init();
+        
+        // Remove event listeners
+        document.removeEventListener('click', initAudioOnInteraction);
+        document.removeEventListener('touchstart', initAudioOnInteraction);
+    }
+}
+
+// Add event listeners for audio initialization
+document.addEventListener('click', initAudioOnInteraction, { once: true });
+document.addEventListener('touchstart', initAudioOnInteraction, { once: true });
+
+// Export for app.js
+window.audioManager = audioManager;
+
+// Simple environmental awareness
+class EnvironmentSensor {
+    constructor() {
+        this.lastInteractionTime = Date.now();
+        this.activityPattern = [];
+        this.inactivityTimer = null;
+        
+        this.init();
+    }
+    
+    init() {
+        // Track screen time indirectly
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.recordInactivity();
+            } else {
+                this.recordActivity();
+                this.checkInactivityNotification();
+            }
+        });
+        
+        // Track interaction frequency
+        document.addEventListener('click', this.recordActivity.bind(this));
+        document.addEventListener('touchstart', this.recordActivity.bind(this));
+        
+        // Start inactivity monitor
+        this.startInactivityMonitor();
+    }
+    
+    recordActivity() {
+        const now = Date.now();
+        const timeSinceLast = now - this.lastInteractionTime;
+        
+        this.activityPattern.push({
+            time: now,
+            duration: timeSinceLast
+        });
+        
+        // Keep only last 100 interactions
+        if (this.activityPattern.length > 100) {
+            this.activityPattern.shift();
+        }
+        
+        this.lastInteractionTime = now;
+        
+        // Reset inactivity timer
+        if (this.inactivityTimer) {
+            clearTimeout(this.inactivityTimer);
+        }
+        this.startInactivityMonitor();
+    }
+    
+    recordInactivity() {
+        // Could log inactivity for patterns
+        console.log('User inactive, screen hidden');
+    }
+    
+    startInactivityMonitor() {
+        this.inactivityTimer = setTimeout(() => {
+            this.checkInactivityNotification();
+        }, 30 * 60 * 1000); // Check every 30 minutes
+    }
+    
+    checkInactivityNotification() {
+        const data = STORAGE.getData();
+        if (!data?.userProfile?.notificationEnabled) return;
+        
+        const now = Date.now();
+        const inactiveTime = now - this.lastInteractionTime;
+        
+        // Only suggest if truly inactive for a while
+        if (inactiveTime > 45 * 60 * 1000) { // 45 minutes
+            this.suggestMicroBreak();
+        }
+    }
+    
+    suggestMicroBreak() {
+        const data = STORAGE.getData();
+        if (!data?.userProfile?.notificationEnabled) return;
+        
+        // Check if we've suggested recently
+        const lastSuggestion = data.userProfile.lastMicroBreakSuggestion;
+        if (lastSuggestion) {
+            const lastTime = new Date(lastSuggestion);
+            const hoursSince = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
+            if (hoursSince < 2) return; // Don't suggest more than every 2 hours
+        }
+        
+        const messages = [
+            "Your attention has been sustained. A 60-second reset would help.",
+            "Time for a nervous system refresh.",
+            "Pause. Reset. Continue.",
+            "Your focus has been steady. A brief reset will enhance clarity."
+        ];
+        
+        const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+        
+        // Show notification if permission granted
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('LIMEN', {
+                body: randomMessage,
+                icon: 'icon-192.png',
+                silent: true
+            });
+            
+            // Record the suggestion
+            STORAGE.updateProfile('lastMicroBreakSuggestion', new Date().toISOString());
+        }
+    }
+    
+    getActivityPattern() {
+        const recent = this.activityPattern.slice(-10);
+        const avgInterval = recent.length > 0 
+            ? recent.reduce((sum, a) => sum + a.duration, 0) / recent.length
+            : 0;
+        
+        return {
+            avgInterval,
+            isHighFrequency: avgInterval < 5000, // Less than 5 seconds between interactions
+            lastActive: this.lastInteractionTime,
+            totalInteractions: this.activityPattern.length
+        };
+    }
+    
+    // Estimate cognitive load based on interaction patterns
+    estimateCognitiveLoad() {
+        const pattern = this.getActivityPattern();
+        
+        if (pattern.isHighFrequency && pattern.totalInteractions > 20) {
+            return { state: 'CognitiveOverdrive', confidence: 0.6 };
+        }
+        
+        const inactiveHours = (Date.now() - pattern.lastActive) / (1000 * 60 * 60);
+        if (inactiveHours > 3) {
+            return { state: 'Understimulated', confidence: 0.5 };
+        }
+        
+        return null;
+    }
+}
+
+// Initialize environment sensor
+const environmentSensor = new EnvironmentSensor();
+window.environmentSensor = environmentSensor;
