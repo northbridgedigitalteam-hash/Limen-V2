@@ -1,55 +1,127 @@
-// Push Notification Logic
+// Push Notification Manager
 class PushManager {
     constructor() {
         this.notificationCooldown = 2 * 60 * 60 * 1000; // 2 hours
         this.lastNotificationTime = null;
         this.maxDailyNotifications = 2;
+        this.notificationCheckInterval = null;
+        
+        this.init();
     }
 
-    checkNotifications() {
-        const now = new Date();
-        const data = STORAGE.getData();
+    async init() {
+        // Check for notification permission
+        this.checkPermission();
         
-        if (!data.userProfile.notificationEnabled) return false;
+        // Start periodic checks
+        this.startPeriodicChecks();
+        
+        // Listen for visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                this.checkNotifications();
+            }
+        });
+    }
+
+    // Check and request notification permission
+    async checkPermission() {
+        if (!('Notification' in window)) {
+            console.log('This browser does not support notifications');
+            return false;
+        }
+        
+        if (Notification.permission === 'granted') {
+            STORAGE.enableNotifications();
+            return true;
+        }
+        
+        if (Notification.permission === 'default') {
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    STORAGE.enableNotifications();
+                    return true;
+                }
+            } catch (error) {
+                console.log('Error requesting notification permission:', error);
+            }
+        }
+        
+        STORAGE.disableNotifications();
+        return false;
+    }
+
+    // Start periodic notification checks
+    startPeriodicChecks() {
+        if (this.notificationCheckInterval) {
+            clearInterval(this.notificationCheckInterval);
+        }
+        
+        // Check every 30 minutes
+        this.notificationCheckInterval = setInterval(() => {
+            this.checkNotifications();
+        }, 30 * 60 * 1000);
+        
+        // Initial check after 1 minute
+        setTimeout(() => this.checkNotifications(), 60000);
+    }
+
+    // Check if we should send a notification
+    async checkNotifications() {
+        const data = STORAGE.getData();
+        if (!data || !data.userProfile.notificationEnabled) {
+            return false;
+        }
         
         // Check daily limit
-        const todayNotifications = data.sessionHistory.filter(session => {
-            const sessionDate = new Date(session.timestamp);
-            return sessionDate.toDateString() === now.toDateString() && 
-                   session.notificationTriggered;
-        }).length;
-        
-        if (todayNotifications >= this.maxDailyNotifications) return false;
+        const todayNotifications = this.getTodayNotificationCount();
+        if (todayNotifications >= this.maxDailyNotifications) {
+            return false;
+        }
         
         // Check cooldown
         if (this.lastNotificationTime && 
-            (now - this.lastNotificationTime) < this.notificationCooldown) {
+            (Date.now() - this.lastNotificationTime) < this.notificationCooldown) {
             return false;
         }
         
         // Check if user needs intervention
-        const shouldNotify = this.shouldSendNotification();
+        const shouldNotify = await this.shouldSendNotification();
         
         if (shouldNotify) {
             this.sendNotification();
-            this.lastNotificationTime = now;
+            this.lastNotificationTime = Date.now();
+            this.recordNotification();
             return true;
         }
         
         return false;
     }
 
-    shouldSendNotification() {
+    // Get today's notification count
+    getTodayNotificationCount() {
+        const history = STORAGE.getSessionHistory(1);
+        const today = new Date().toDateString();
+        
+        return history.filter(session => 
+            session.type === 'notification' && 
+            new Date(session.timestamp).toDateString() === today
+        ).length;
+    }
+
+    // Determine if we should send a notification
+    async shouldSendNotification() {
         const history = STORAGE.getSessionHistory(1);
         const now = new Date();
         const hour = now.getHours();
         
-        // No sessions today
+        // Rule 1: No sessions today and it's past morning
         if (history.length === 0 && hour >= 10) {
             return true;
         }
         
-        // Multiple sessions recently (stress pattern)
+        // Rule 2: Multiple sessions recently (stress pattern)
         if (history.length >= 3) {
             const recentSessions = history.slice(-3);
             const timeSpan = (new Date(recentSessions[2].timestamp) - 
@@ -59,7 +131,7 @@ class PushManager {
             }
         }
         
-        // Late day, no positive sessions
+        // Rule 3: Late day, no positive sessions
         if (hour >= 20) {
             const positiveSessions = history.filter(s => s.feedback === 'yes');
             if (positiveSessions.length === 0) {
@@ -67,9 +139,21 @@ class PushManager {
             }
         }
         
+        // Rule 4: User has been inactive for a while
+        const lastSession = STORAGE.getLastSession();
+        if (lastSession) {
+            const lastSessionTime = new Date(lastSession.timestamp);
+            const hoursSinceLast = (now - lastSessionTime) / (1000 * 60 * 60);
+            
+            if (hoursSinceLast >= 4 && hour >= 9 && hour <= 21) {
+                return true;
+            }
+        }
+        
         return false;
     }
 
+    // Send a notification
     sendNotification() {
         const messages = [
             "Pause for 60 seconds.",
@@ -77,53 +161,97 @@ class PushManager {
             "Reduce load now.",
             "Reset your nervous system.",
             "60 seconds to baseline.",
-            "Interrupt the pattern."
+            "Interrupt the pattern.",
+            "Your nervous system needs a break.",
+            "Regulate before continuing."
         ];
         
         const randomMessage = messages[Math.floor(Math.random() * messages.length)];
         
         if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('LIMEN', {
-                body: randomMessage,
-                icon: '/icon-192.png',
-                badge: '/icon-72.png',
-                requireInteraction: false,
-                silent: true
-            });
-            
-            // Log notification
-            const data = STORAGE.getData();
-            data.sessionHistory.push({
-                type: 'notification',
-                message: randomMessage,
-                timestamp: new Date().toISOString(),
-                notificationTriggered: true
-            });
-            STORAGE.setData(data);
+            try {
+                const notification = new Notification('LIMEN', {
+                    body: randomMessage,
+                    icon: 'icon-192.png',
+                    badge: 'icon-192.png',
+                    requireInteraction: false,
+                    silent: true,
+                    tag: 'limen-regulation',
+                    renotify: false,
+                    data: {
+                        url: window.location.origin,
+                        timestamp: Date.now()
+                    }
+                });
+                
+                // Handle notification click
+                notification.onclick = () => {
+                    window.focus();
+                    notification.close();
+                };
+                
+                // Auto-close after 10 seconds
+                setTimeout(() => {
+                    notification.close();
+                }, 10000);
+                
+                return true;
+            } catch (error) {
+                console.log('Error sending notification:', error);
+                return false;
+            }
         }
+        
+        return false;
     }
 
-    schedulePeriodicChecks() {
-        // Check every hour
-        setInterval(() => {
-            this.checkNotifications();
-        }, 60 * 60 * 1000);
+    // Record notification in history
+    recordNotification() {
+        const notification = {
+            type: 'notification',
+            timestamp: new Date().toISOString(),
+            notificationTriggered: true
+        };
         
-        // Also check when app becomes visible
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                this.checkNotifications();
-            }
-        });
+        STORAGE.addSession(notification);
+    }
+
+    // Send a test notification (for debugging)
+    sendTestNotification() {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('LIMEN Test', {
+                body: 'This is a test notification.',
+                icon: 'icon-192.png',
+                badge: 'icon-192.png',
+                silent: true
+            });
+            return true;
+        }
+        return false;
+    }
+
+    // Stop all notifications
+    stop() {
+        if (this.notificationCheckInterval) {
+            clearInterval(this.notificationCheckInterval);
+            this.notificationCheckInterval = null;
+        }
     }
 }
 
 // Initialize push manager
-window.pushManager = new PushManager();
+let pushManager = null;
 
-// Schedule checks when app loads
-window.addEventListener('load', () => {
+document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
-        window.pushManager.schedulePeriodicChecks();
-    }, 5000);
+        pushManager = new PushManager();
+        window.pushManager = pushManager;
+    }, 2000);
+});
+
+// Handle page unload
+window.addEventListener('beforeunload', () => {
+    if (pushManager) {
+        pushManager.stop();
+    }
 });
