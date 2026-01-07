@@ -9,6 +9,7 @@ class LimenApp {
         this.timerTotal = 0;
         this.feedbackGiven = false;
         this.currentSessionId = null;
+        this.glowElement = null;
         
         this.init();
     }
@@ -16,32 +17,24 @@ class LimenApp {
     init() {
         console.log('LIMEN App initializing...');
         
-        // Initialize components
+        // Bind all events
         this.bindEvents();
-        this.checkFirstTime();
         
-        // Check PWA installation
-        this.checkPWAInstallation();
+        // Don't auto-navigate - wait for user to click Continue
+        // Show entry screen only
+        this.showScreen('entry');
         
-        // Set up beforeunload handler
-        window.addEventListener('beforeunload', () => this.cleanup());
-        
-        // Initialize after a short delay
-        setTimeout(() => {
-            this.checkSessionFlow();
-        }, 800);
+        // Check if we should show weekly summary (e.g., on Mondays)
+        this.checkWeeklySummaryPrompt();
     }
 
     bindEvents() {
-        // Entry screen
-        const btnContinue = document.getElementById('btn-continue');
-        if (btnContinue) {
-            btnContinue.addEventListener('click', () => {
-                this.showScreen('state');
-            });
-        }
+        // Entry screen - only button
+        document.getElementById('btn-continue').addEventListener('click', () => {
+            this.showScreen('state');
+        });
 
-        // State selection
+        // State selection buttons
         document.querySelectorAll('.btn-state').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const state = e.target.dataset.state;
@@ -56,69 +49,11 @@ class LimenApp {
                 this.handleFeedback(feedback);
             });
         });
-    }
 
-    checkFirstTime() {
-        const data = STORAGE.getData();
-        if (!data || data.sessionHistory.length === 0) {
-            console.log('First time user detected');
-            this.showFirstTimeTips();
-        }
-    }
-
-    showFirstTimeTips() {
-        // Could show a brief tutorial here
-        console.log('First time tips would show here');
-    }
-
-    checkPWAInstallation() {
-        // Check if app is running as PWA
-        if (window.matchMedia('(display-mode: standalone)').matches || 
-            window.navigator.standalone === true) {
-            console.log('Running as PWA');
-            document.body.classList.add('pwa-mode');
-        }
-    }
-
-    checkSessionFlow() {
-        const lastSession = STORAGE.getLastSession();
-        const now = new Date();
-        
-        if (lastSession) {
-            const lastSessionTime = new Date(lastSession.timestamp);
-            const hoursSinceLast = (now - lastSessionTime) / (1000 * 60 * 60);
-            
-            // If last session was recent and effective, skip to intervention
-            if (hoursSinceLast < 2 && lastSession.feedback === 'yes') {
-                const history = STORAGE.getSessionHistory();
-                const inferred = STATE_ENGINE.inferState(history, now);
-                
-                if (inferred.confidence > 0.7) {
-                    this.currentState = inferred.state;
-                    this.showIntervention(this.currentState);
-                    return;
-                }
-            }
-            
-            // Check last state selection time
-            const profile = STORAGE.getData()?.userProfile;
-            if (profile?.lastStateSelection) {
-                const lastSelectionTime = new Date(profile.lastStateSelection);
-                const hoursSinceSelection = (now - lastSelectionTime) / (1000 * 60 * 60);
-                
-                if (hoursSinceSelection < 24) {
-                    // Skip state selection if user selected recently
-                    const history = STORAGE.getSessionHistory();
-                    const inferred = STATE_ENGINE.inferState(history, now);
-                    this.currentState = inferred.state;
-                    this.showIntervention(this.currentState);
-                    return;
-                }
-            }
-        }
-        
-        // Otherwise show state selection
-        this.showScreen('state');
+        // Weekly summary back button
+        document.getElementById('btn-back-to-entry').addEventListener('click', () => {
+            this.showScreen('entry');
+        });
     }
 
     showScreen(screenName) {
@@ -136,13 +71,13 @@ class LimenApp {
             this.currentScreen = screenName;
             
             // Screen-specific initialization
-            if (screenName === 'intervention' && this.currentIntervention) {
-                this.startTimer();
-            }
-            
-            if (screenName === 'state') {
-                // Record that user is seeing state selection
-                STORAGE.recordStateSelection();
+            switch(screenName) {
+                case 'intervention':
+                    this.startTimer();
+                    break;
+                case 'summary':
+                    this.loadWeeklySummary();
+                    break;
             }
         }
     }
@@ -150,7 +85,11 @@ class LimenApp {
     selectState(state) {
         console.log('User selected state:', state);
         this.currentState = state;
+        
+        // Record state selection
         STORAGE.updateProfile('lastSelectedState', state);
+        STORAGE.updateProfile('lastStateSelection', new Date().toISOString());
+        
         this.showIntervention(state);
     }
 
@@ -185,6 +124,12 @@ class LimenApp {
             timerFill.style.strokeDashoffset = circumference;
         }
         
+        // Get glow element
+        this.glowElement = document.getElementById('timer-glow');
+        if (this.glowElement) {
+            this.glowElement.classList.remove('amber');
+        }
+        
         this.showScreen('intervention');
     }
 
@@ -209,6 +154,11 @@ class LimenApp {
                 const progress = this.timeRemaining / this.timerTotal;
                 const offset = circumference * progress;
                 timerFill.style.strokeDashoffset = offset;
+            }
+            
+            // Change glow color when 5 seconds remain
+            if (this.timeRemaining <= 5 && this.glowElement) {
+                this.glowElement.classList.add('amber');
             }
             
             if (this.timeRemaining <= 0) {
@@ -239,7 +189,7 @@ class LimenApp {
         switch(feedback) {
             case 'yes':
                 if (feedbackMessage) {
-                    feedbackMessage.textContent = 'Good.';
+                    feedbackMessage.textContent = 'Returning to baseline. Good.';
                 }
                 this.handlePositiveFeedback();
                 break;
@@ -253,7 +203,7 @@ class LimenApp {
                 
             case 'no':
                 if (feedbackMessage) {
-                    feedbackMessage.textContent = 'Adjusting...';
+                    feedbackMessage.textContent = 'Adjusting approach...';
                 }
                 this.handleNegativeFeedback();
                 break;
@@ -265,10 +215,15 @@ class LimenApp {
 
     handlePositiveFeedback() {
         setTimeout(() => {
-            // Return to entry screen
-            this.showScreen('entry');
+            // Check if we should show weekly summary (once per week)
+            if (this.shouldShowWeeklySummary()) {
+                this.showScreen('summary');
+            } else {
+                // Return to entry screen
+                this.showScreen('entry');
+            }
             this.resetSession();
-        }, 1200);
+        }, 1500);
     }
 
     handlePartialFeedback() {
@@ -290,6 +245,11 @@ class LimenApp {
                 timerText.textContent = this.timeRemaining;
             }
             
+            // Reset glow
+            if (this.glowElement) {
+                this.glowElement.classList.remove('amber');
+            }
+            
             this.showScreen('intervention');
             this.startTimer();
             this.feedbackGiven = false;
@@ -306,7 +266,7 @@ class LimenApp {
     }
 
     getFallbackState() {
-        // Simple fallback logic based on current state
+        // Fallback logic based on current state
         const fallbacks = {
             'CognitiveOverdrive': 'RecoveryDebt',
             'RecoveryDebt': 'ShutdownDrift',
@@ -333,7 +293,8 @@ class LimenApp {
             intervention: this.currentIntervention.title || this.currentState,
             duration: this.currentIntervention.duration || 90,
             feedback: null,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            returnedToBaseline: false
         };
         
         const savedSession = STORAGE.addSession(session);
@@ -353,70 +314,27 @@ class LimenApp {
         if (sessionIndex !== -1) {
             data.sessionHistory[sessionIndex].feedback = feedback;
             data.sessionHistory[sessionIndex].completedAt = new Date().toISOString();
+            data.sessionHistory[sessionIndex].returnedToBaseline = (feedback === 'yes');
             STORAGE.setData(data);
         }
     }
 
-    resetSession() {
-        this.currentState = null;
-        this.currentIntervention = null;
-        this.currentSessionId = null;
-        this.feedbackGiven = false;
-        this.timeRemaining = 0;
-        this.timerTotal = 0;
-        
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-        }
-    }
-
-    cleanup() {
-        console.log('Cleaning up app...');
-        
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-        }
-        
-        if (window.pushManager) {
-            window.pushManager.stop();
-        }
-    }
-
-    // Utility method for debugging
-    showDebugInfo() {
+    // WEEKLY SUMMARY FUNCTIONS
+    loadWeeklySummary() {
         const stats = STORAGE.getStats();
-        console.log('App Stats:', stats);
-        console.log('Current State:', this.currentState);
-        console.log('Current Session ID:', this.currentSessionId);
-    }
-}
-
-// Initialize app when DOM is loaded
-let app = null;
-
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        app = new LimenApp();
-        window.app = app;
+        if (!stats) return;
         
-        // Add debug shortcut (remove in production)
-        window.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-                app.showDebugInfo();
-            }
-        });
+        // Update basic stats
+        document.getElementById('total-sessions').textContent = stats.totalSessions || 0;
+        document.getElementById('effectiveness-rate').textContent = stats.effectivenessRate + '%' || '0%';
+        document.getElementById('avg-time').textContent = (stats.avgDuration || 0) + 's';
         
-        console.log('LIMEN App initialized successfully');
-    } catch (error) {
-        console.error('Failed to initialize LIMEN App:', error);
+        // Load state distribution chart
+        this.loadStateDistribution();
+        
+        // Load insight
+        this.loadWeeklyInsight();
     }
-});
 
-// Handle service worker updates
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('Service Worker updated, reloading...');
-        window.location.reload();
-    });
-}
+    loadStateDistribution() {
+        const history = STORAGE.getSessionHistory
