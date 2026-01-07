@@ -47,13 +47,14 @@ html, body {
     z-index: 1;
 }
 
-/* LIMEN HOME SCREEN GLOW */
+/* LIMEN HOME SCREEN GLOW WITH TAGLINE */
 .limen-glow-container {
     position: relative;
     margin: 0 auto 4rem;
     width: 300px;
-    height: 150px;
+    height: 180px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
 }
@@ -64,7 +65,7 @@ html, body {
     left: 50%;
     transform: translate(-50%, -50%);
     width: 320px;
-    height: 160px;
+    height: 190px;
     border-radius: 24px;
     background: radial-gradient(ellipse at center, 
         rgba(107, 197, 166, 0.2) 0%, 
@@ -86,6 +87,21 @@ html, body {
     position: relative;
     text-transform: uppercase;
     margin: 0;
+    line-height: 1;
+}
+
+.tagline {
+    text-align: center;
+    color: #6bc5a6;
+    font-size: 0.9rem;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    margin-top: 15px;
+    opacity: 0.8;
+    z-index: 1;
+    position: relative;
+    max-width: 280px;
+    line-height: 1.4;
 }
 
 @keyframes limenGlowPulse {
@@ -99,23 +115,7 @@ html, body {
     }
 }
 
-/* HOME SCREEN SUBTEXT */
-.screen .brand {
-    position: absolute;
-    bottom: 2rem;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #6bc5a6;
-    font-size: 0.9rem;
-    font-weight: 400;
-    letter-spacing: 0.05em;
-    text-align: center;
-    width: 100%;
-    max-width: 300px;
-    opacity: 0.7;
-}
-
-/* Other screens brand positioning */
+/* BRAND FOR OTHER SCREENS */
 .screen:not(#screen-entry) .brand {
     position: absolute;
     bottom: 2rem;
@@ -487,27 +487,29 @@ html, body {
     
     .limen-glow-container {
         width: 250px;
-        height: 120px;
+        height: 160px;
         margin-bottom: 3rem;
     }
     
     .limen-glow {
         width: 270px;
-        height: 130px;
+        height: 170px;
     }
     
     .limen-title {
         font-size: 3.5rem;
     }
     
-    .screen .brand {
-        font-size: 0.8rem;
-        bottom: 1.5rem;
+    .tagline {
+        font-size: 0.85rem;
+        margin-top: 12px;
+        max-width: 240px;
     }
     
     .screen:not(#screen-entry) .brand {
         bottom: 1.5rem;
         right: 1.5rem;
+        font-size: 0.8rem;
     }
     
     h2 {
@@ -558,10 +560,16 @@ html, body {
 @media (max-height: 700px) {
     .limen-glow-container {
         margin-bottom: 2rem;
+        height: 160px;
     }
     
     .limen-title {
         font-size: 3.5rem;
+    }
+    
+    .tagline {
+        font-size: 0.85rem;
+        margin-top: 10px;
     }
     
     h1 {
