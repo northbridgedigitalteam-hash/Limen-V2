@@ -1,4 +1,4 @@
-// Local Storage Management
+// Local Storage Management - ENHANCED
 const STORAGE = {
     KEY: 'limen_v1',
     VERSION: '1.2.0',
@@ -7,7 +7,7 @@ const STORAGE = {
     init() {
         let data = this.getData();
         if (!data || data.version !== this.VERSION) {
-            // Initialize or migrate
+            // Initialize with psychological tracking
             data = {
                 version: this.VERSION,
                 sessionHistory: [],
@@ -17,28 +17,24 @@ const STORAGE = {
                     lastStateSelection: null,
                     lastSelectedState: null,
                     lastSummaryShown: null,
-                    lastMondayPrompt: null,
                     totalReturnToBaseline: 0,
-                    deviceId: this.generateDeviceId(),
-                    preferences: {
-                        hapticFeedback: true,
-                        ambientAudio: false,
-                        zenMode: false
-                    }
+                    psychologicalPatterns: [],
+                    currentStreak: 0,
+                    bestStreak: 0
                 },
                 appStats: {
                     totalSessions: 0,
                     totalTime: 0,
                     totalReturnToBaseline: 0,
                     firstUse: new Date().toISOString(),
-                    lastUse: null,
-                    currentStreak: 0
+                    lastUse: null
                 },
                 weeklyStats: {
                     currentWeekStart: this.getWeekStartDate(),
                     sessionsThisWeek: 0,
                     returnToBaselineThisWeek: 0
-                }
+                },
+                patternInsights: []
             };
             this.setData(data);
         }
@@ -46,11 +42,6 @@ const STORAGE = {
         // Update week tracking if needed
         this.updateWeekTracking();
         return data;
-    },
-
-    // Generate unique device ID
-    generateDeviceId() {
-        return 'device-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     },
 
     // Get week start date (Monday)
@@ -128,10 +119,18 @@ const STORAGE = {
             data.appStats.totalReturnToBaseline++;
             data.userProfile.totalReturnToBaseline++;
             data.weeklyStats.returnToBaselineThisWeek++;
+            
+            // Update streak
+            this.updateStreak(data, true);
+        } else {
+            // Break streak on unsuccessful regulation
+            this.updateStreak(data, false);
         }
         
-        // Update streak
-        this.updateStreak(data);
+        // Generate psychological insight if returned to baseline
+        if (session.returnedToBaseline) {
+            this.generatePsychologicalInsight(data, session);
+        }
         
         // Keep only last 500 sessions
         if (data.sessionHistory.length > 500) {
@@ -142,40 +141,142 @@ const STORAGE = {
         return session;
     },
 
-    // Update streak calculation
-    updateStreak(data) {
-        if (!data.sessionHistory || data.sessionHistory.length === 0) {
-            data.appStats.currentStreak = 0;
-            return;
+    // Update streak
+    updateStreak(data, success) {
+        if (success) {
+            data.userProfile.currentStreak++;
+            if (data.userProfile.currentStreak > data.userProfile.bestStreak) {
+                data.userProfile.bestStreak = data.userProfile.currentStreak;
+            }
+        } else {
+            data.userProfile.currentStreak = 0;
+        }
+    },
+
+    // Generate psychological insight
+    generatePsychologicalInsight(data, session) {
+        if (data.sessionHistory.length < 3) return;
+        
+        const recentSessions = data.sessionHistory.slice(-10);
+        
+        // Pattern recognition
+        const insight = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            dominantPattern: this.identifyDominantPattern(recentSessions),
+            effectivenessTrend: this.calculateEffectivenessTrend(recentSessions),
+            timePattern: this.identifyTimePattern(recentSessions),
+            stateFrequency: this.calculateStateFrequency(recentSessions),
+            psychologicalTip: this.generatePsychologicalTip(recentSessions)
+        };
+        
+        data.patternInsights.push(insight);
+        
+        // Keep only last 10 insights
+        if (data.patternInsights.length > 10) {
+            data.patternInsights = data.patternInsights.slice(-10);
         }
         
-        const today = new Date().toDateString();
-        const uniqueDates = new Set();
+        this.setData(data);
+        return insight;
+    },
+
+    // Identify dominant pattern
+    identifyDominantPattern(sessions) {
+        if (sessions.length < 3) return null;
         
-        // Get unique dates with sessions
-        data.sessionHistory.forEach(session => {
-            const sessionDate = new Date(session.timestamp).toDateString();
-            uniqueDates.add(sessionDate);
+        const stateCount = {};
+        sessions.forEach(s => {
+            if (s.state) {
+                stateCount[s.state] = (stateCount[s.state] || 0) + 1;
+            }
         });
         
-        // Sort dates
-        const sortedDates = Array.from(uniqueDates).sort((a, b) => new Date(b) - new Date(a));
+        const mostFrequent = Object.entries(stateCount)
+            .sort((a, b) => b[1] - a[1])[0];
         
-        let streak = 0;
-        let currentDate = new Date();
-        
-        // Check consecutive days from today backward
-        while (true) {
-            const dateStr = currentDate.toDateString();
-            if (sortedDates.includes(dateStr)) {
-                streak++;
-                currentDate.setDate(currentDate.getDate() - 1);
-            } else {
-                break;
-            }
+        if (mostFrequent && mostFrequent[1] >= sessions.length * 0.4) {
+            return {
+                state: mostFrequent[0],
+                frequency: mostFrequent[1],
+                percentage: Math.round((mostFrequent[1] / sessions.length) * 100)
+            };
         }
         
-        data.appStats.currentStreak = streak;
+        return null;
+    },
+
+    // Calculate effectiveness trend
+    calculateEffectivenessTrend(sessions) {
+        if (sessions.length < 4) return 'insufficient_data';
+        
+        const half = Math.floor(sessions.length / 2);
+        const firstHalf = sessions.slice(0, half);
+        const secondHalf = sessions.slice(half);
+        
+        const effectiveness1 = firstHalf.filter(s => s.feedback === 'yes').length / firstHalf.length;
+        const effectiveness2 = secondHalf.filter(s => s.feedback === 'yes').length / secondHalf.length;
+        
+        if (effectiveness2 > effectiveness1 + 0.15) return 'improving';
+        if (effectiveness2 < effectiveness1 - 0.15) return 'declining';
+        return 'stable';
+    },
+
+    // Identify time pattern
+    identifyTimePattern(sessions) {
+        const times = sessions.map(s => {
+            const hour = new Date(s.timestamp).getHours();
+            if (hour < 12) return 'morning';
+            if (hour < 17) return 'afternoon';
+            return 'evening';
+        });
+        
+        const timeCount = { morning: 0, afternoon: 0, evening: 0 };
+        times.forEach(time => timeCount[time]++);
+        
+        const mostCommon = Object.entries(timeCount)
+            .sort((a, b) => b[1] - a[1])[0];
+        
+        return mostCommon[0];
+    },
+
+    // Calculate state frequency
+    calculateStateFrequency(sessions) {
+        const stateCount = {};
+        sessions.forEach(s => {
+            if (s.state) {
+                stateCount[s.state] = (stateCount[s.state] || 0) + 1;
+            }
+        });
+        
+        return Object.entries(stateCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4); // Top 4 states
+    },
+
+    // Generate psychological tip based on patterns
+    generatePsychologicalTip(sessions) {
+        const patterns = this.identifyDominantPattern(sessions);
+        const trend = this.calculateEffectivenessTrend(sessions);
+        
+        if (patterns && patterns.percentage > 50) {
+            const state = patterns.state;
+            const tips = {
+                'CognitiveOverdrive': 'Your brain is showing a pattern of cognitive overload. Try scheduling "thinking breaks" before overwhelm sets in.',
+                'SomaticTension': 'Your body is holding tension consistently. Consider a daily 5-minute body scan to release stored stress.',
+                'RecoveryDebt': 'You\'re accumulating recovery debt. Schedule intentional rest before exhaustion hits.',
+                'Hypervigilance': 'Your nervous system is often on high alert. Practice grounding techniques throughout the day.',
+                'EmotionalLoad': 'You experience frequent emotional waves. Try naming emotions as they arise to create distance.',
+                'ShutdownDrift': 'You tend toward shutdown when overwhelmed. Set micro-reminders to stay present.'
+            };
+            return tips[state] || 'Consistent regulation builds nervous system resilience.';
+        }
+        
+        if (trend === 'improving') {
+            return 'Your regulation effectiveness is improving! This shows your nervous system is learning to self-regulate.';
+        }
+        
+        return 'Regular regulation strengthens the vagus nerve, improving your stress response over time.';
     },
 
     // Get session history
@@ -199,7 +300,7 @@ const STORAGE = {
         });
     },
 
-    // Get statistics
+    // Get statistics with psychological insights
     getStats() {
         const history = this.getSessionHistory(30);
         const weeklyHistory = this.getSessionHistory('week');
@@ -230,6 +331,9 @@ const STORAGE = {
             }
         });
         
+        // Get latest psychological insight
+        const latestInsight = data.patternInsights.slice(-1)[0];
+        
         return {
             totalSessions,
             effectivenessRate,
@@ -239,8 +343,10 @@ const STORAGE = {
             last7Days: this.getSessionHistory(7).length,
             returnToBaselineCount: yesCount,
             weeklyStats: data.weeklyStats,
-            currentStreak: data.appStats.currentStreak,
-            preferences: data.userProfile.preferences
+            currentStreak: data.userProfile.currentStreak || 0,
+            bestStreak: data.userProfile.bestStreak || 0,
+            psychologicalInsight: latestInsight,
+            patterns: this.identifyDominantPattern(history)
         };
     },
 
