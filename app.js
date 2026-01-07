@@ -1,4 +1,4 @@
-// Main Application Logic
+// Main Application Logic - ENHANCED
 class LimenApp {
     constructor() {
         this.currentScreen = 'entry';
@@ -10,8 +10,6 @@ class LimenApp {
         this.feedbackGiven = false;
         this.currentSessionId = null;
         this.glowElement = null;
-        this.pulseElement = null;
-        this.pulseInterval = null;
         
         this.init();
     }
@@ -19,49 +17,18 @@ class LimenApp {
     init() {
         console.log('LIMEN App initializing...');
         
-        // Apply saved preferences
-        this.applyPreferences();
-        
         // Bind all events
         this.bindEvents();
         
-        // Show entry screen only
+        // Don't auto-navigate - wait for user to click Continue
         this.showScreen('entry');
         
-        // Check if we should show weekly summary (e.g., on Mondays)
-        this.checkWeeklySummaryPrompt();
-        
-        // Setup emergency reset
-        this.setupEmergencyReset();
-        
-        // Check for Zen mode
-        this.checkZenMode();
-    }
-
-    applyPreferences() {
-        const data = STORAGE.getData();
-        if (!data || !data.userProfile || !data.userProfile.preferences) return;
-        
-        const prefs = data.userProfile.preferences;
-        
-        // Apply Zen mode
-        if (prefs.zenMode) {
-            document.body.classList.add('zen-mode');
-        }
-        
-        // Apply haptic feedback setting
-        if (prefs.hapticFeedback === false) {
-            // Will be checked before triggering vibrations
-        }
-        
-        // Apply ambient audio setting
-        if (prefs.ambientAudio && window.audioManager) {
-            window.audioManager.toggle(true);
-        }
+        // Check emergency button visibility
+        setTimeout(() => this.checkEmergencyButtonVisibility(), 1000);
     }
 
     bindEvents() {
-        // Entry screen - only button
+        // Entry screen
         document.getElementById('btn-continue').addEventListener('click', () => {
             this.showScreen('state');
         });
@@ -86,98 +53,38 @@ class LimenApp {
         document.getElementById('btn-back-to-entry').addEventListener('click', () => {
             this.showScreen('entry');
         });
-    }
 
-    setupEmergencyReset() {
-        const emergencyBtn = document.getElementById('btn-emergency');
-        if (emergencyBtn) {
-            emergencyBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.triggerEmergencyReset();
-            });
-            
-            // Check if we should show emergency button
-            this.checkEmergencyButtonVisibility();
-        }
-    }
-
-    checkEmergencyButtonVisibility() {
-        const history = STORAGE.getSessionHistory(1);
-        const recentNegativeFeedback = history.filter(s => s.feedback === 'no').length;
-        const shouldShow = recentNegativeFeedback >= 2 || 
-                          (history.length >= 5 && recentNegativeFeedback >= 1);
-        
-        const emergencyReset = document.getElementById('emergency-reset');
-        if (emergencyReset) {
-            emergencyReset.style.display = shouldShow ? 'block' : 'none';
-        }
+        // Emergency reset button
+        document.getElementById('btn-emergency').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.triggerEmergencyReset();
+        });
     }
 
     showScreen(screenName) {
         console.log('Showing screen:', screenName);
         
-        // Animate current screen out
-        const currentScreen = document.querySelector('.screen.active');
-        if (currentScreen) {
-            currentScreen.classList.remove('active');
-            currentScreen.classList.add('fade-out');
-            
-            setTimeout(() => {
-                currentScreen.classList.remove('fade-out');
-            }, 300);
-        }
+        // Hide all screens
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
         
-        // Stop pulse animation when leaving intervention screen
-        if (screenName !== 'intervention' && this.pulseInterval) {
-            clearInterval(this.pulseInterval);
-            this.pulseInterval = null;
-            if (this.pulseElement) {
-                this.pulseElement.classList.remove('active');
-            }
-        }
-        
-        // Show target screen with animation
+        // Show target screen
         const targetScreen = document.getElementById(`screen-${screenName}`);
         if (targetScreen) {
-            targetScreen.classList.add('fade-in');
-            
-            setTimeout(() => {
-                targetScreen.classList.add('active');
-                targetScreen.classList.remove('fade-in');
-            }, 50);
-            
+            targetScreen.classList.add('active');
             this.currentScreen = screenName;
             
             // Screen-specific initialization
             switch(screenName) {
                 case 'intervention':
                     this.startTimer();
-                    this.startPulseAnimation();
                     break;
                 case 'summary':
-                    this.loadWeeklySummary();
-                    break;
-                case 'state':
-                    this.prepareStateScreen();
-                    break;
-                case 'entry':
-                    this.resetSession();
+                    this.loadNeuropsychologicalSummary();
                     break;
             }
         }
-    }
-
-    prepareStateScreen() {
-        // Add subtle micro-interactions to state buttons
-        document.querySelectorAll('.btn-state').forEach(btn => {
-            btn.addEventListener('mouseenter', () => {
-                btn.style.transform = 'translateY(-2px)';
-            });
-            
-            btn.addEventListener('mouseleave', () => {
-                btn.style.transform = 'translateY(0)';
-            });
-        });
     }
 
     selectState(state) {
@@ -222,45 +129,10 @@ class LimenApp {
             timerFill.style.strokeDashoffset = circumference;
         }
         
-        // Get glow and pulse elements
+        // Get glow element
         this.glowElement = document.getElementById('timer-glow');
-        this.pulseElement = document.getElementById('timer-pulse');
-        
         if (this.glowElement) {
             this.glowElement.classList.remove('amber');
-        }
-        
-        if (this.pulseElement) {
-            this.pulseElement.classList.remove('active');
-        }
-        
-        // Add haptic feedback based on state
-        if (navigator.vibrate) {
-            const data = STORAGE.getData();
-            const hapticEnabled = data?.userProfile?.preferences?.hapticFeedback ?? true;
-            
-            if (hapticEnabled) {
-                const patterns = {
-                    'CognitiveOverdrive': [100, 50, 100],
-                    'SomaticTension': [50, 100, 50],
-                    'RecoveryDebt': [200],
-                    'Hypervigilance': [30, 30, 30, 100],
-                    'EmergencyReset': [150, 50, 150, 50, 150]
-                };
-                
-                if (patterns[state]) {
-                    navigator.vibrate(patterns[state]);
-                }
-            }
-        }
-        
-        // Play ambient audio if enabled
-        if (window.audioManager && this.currentIntervention.audio) {
-            if (this.currentIntervention.audio === 'brownNoise') {
-                window.audioManager.playBrownNoise(this.currentIntervention.duration);
-            } else if (this.currentIntervention.audio === 'focusTone') {
-                window.audioManager.playFocusTone(this.currentIntervention.duration);
-            }
         }
         
         this.showScreen('intervention');
@@ -292,11 +164,6 @@ class LimenApp {
             // Change glow color when 5 seconds remain
             if (this.timeRemaining <= 5 && this.glowElement) {
                 this.glowElement.classList.add('amber');
-                
-                // Intensify pulse animation for last 5 seconds
-                if (this.pulseElement) {
-                    this.pulseElement.style.animation = 'pulseStrong 0.5s infinite';
-                }
             }
             
             if (this.timeRemaining <= 0) {
@@ -306,49 +173,8 @@ class LimenApp {
         }, 1000);
     }
 
-    startPulseAnimation() {
-        if (this.pulseInterval) {
-            clearInterval(this.pulseInterval);
-        }
-        
-        this.pulseElement = document.getElementById('timer-pulse');
-        if (this.pulseElement) {
-            this.pulseElement.classList.add('active');
-            
-            // Randomize pulse timing slightly for organic feel
-            this.pulseInterval = setInterval(() => {
-                const randomDelay = Math.random() * 500 + 1500; // 1.5-2 seconds
-                setTimeout(() => {
-                    if (this.pulseElement && this.currentScreen === 'intervention') {
-                        this.pulseElement.style.animation = 'none';
-                        setTimeout(() => {
-                            if (this.pulseElement) {
-                                this.pulseElement.style.animation = 'pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1)';
-                            }
-                        }, 10);
-                    }
-                }, randomDelay);
-            }, 3000);
-        }
-    }
-
     timerComplete() {
         console.log('Timer completed for state:', this.currentState);
-        
-        // Stop pulse animation
-        if (this.pulseInterval) {
-            clearInterval(this.pulseInterval);
-            this.pulseInterval = null;
-        }
-        
-        if (this.pulseElement) {
-            this.pulseElement.classList.remove('active');
-        }
-        
-        // Stop audio
-        if (window.audioManager) {
-            window.audioManager.stopAll();
-        }
         
         // Save session before feedback
         this.saveSession();
@@ -368,7 +194,7 @@ class LimenApp {
         switch(feedback) {
             case 'yes':
                 if (feedbackMessage) {
-                    feedbackMessage.textContent = 'Returning to baseline. Good.';
+                    feedbackMessage.textContent = 'Returning to baseline.';
                 }
                 this.handlePositiveFeedback();
                 break;
@@ -382,7 +208,7 @@ class LimenApp {
                 
             case 'no':
                 if (feedbackMessage) {
-                    feedbackMessage.textContent = 'Adjusting approach...';
+                    feedbackMessage.textContent = 'Adjusting...';
                 }
                 this.handleNegativeFeedback();
                 break;
@@ -390,22 +216,12 @@ class LimenApp {
         
         // Update session with feedback
         this.updateSessionFeedback(feedback);
-        
-        // Update emergency button visibility
-        setTimeout(() => {
-            this.checkEmergencyButtonVisibility();
-        }, 1000);
     }
 
     handlePositiveFeedback() {
         setTimeout(() => {
-            // Check if we should show weekly summary (once per week)
-            if (this.shouldShowWeeklySummary()) {
-                this.showWeeklySummary();
-            } else {
-                // Return to entry screen
-                this.showScreen('entry');
-            }
+            // Show neuropsychological summary immediately after successful regulation
+            this.showNeuropsychologicalSummary();
             this.resetSession();
         }, 1500);
     }
@@ -429,18 +245,13 @@ class LimenApp {
                 timerText.textContent = this.timeRemaining;
             }
             
-            // Reset glow and pulse
+            // Reset glow
             if (this.glowElement) {
                 this.glowElement.classList.remove('amber');
             }
             
-            if (this.pulseElement) {
-                this.pulseElement.style.animation = 'pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1)';
-            }
-            
             this.showScreen('intervention');
             this.startTimer();
-            this.startPulseAnimation();
             this.feedbackGiven = false;
         }, 1500);
     }
@@ -475,12 +286,16 @@ class LimenApp {
     }
 
     triggerEmergencyReset() {
+        // Add pulse animation to emergency button
+        const emergencyBtn = document.getElementById('btn-emergency');
+        emergencyBtn.classList.add('pulse');
+        
         // Immediate intervention for acute dysregulation
         const emergencyIntervention = {
             title: "Emergency Reset",
             text: "Place both feet flat on the ground. Press palms together firmly. Breathe: 4 seconds in, 7 seconds hold, 8 seconds out. Repeat 3 times.",
-            duration: 90,
-            audio: "brownNoise"
+            duration: 120,
+            color: "#ff4444"
         };
         
         this.currentIntervention = emergencyIntervention;
@@ -500,15 +315,6 @@ class LimenApp {
             timerText.textContent = this.timeRemaining;
         }
         
-        // Strong haptic feedback
-        if (navigator.vibrate) {
-            const data = STORAGE.getData();
-            const hapticEnabled = data?.userProfile?.preferences?.hapticFeedback ?? true;
-            if (hapticEnabled) {
-                navigator.vibrate([150, 50, 150, 50, 150]);
-            }
-        }
-        
         // Show intervention screen immediately
         this.showScreen('intervention');
         
@@ -516,12 +322,17 @@ class LimenApp {
         const session = {
             state: "EmergencyReset",
             intervention: "Emergency Reset",
-            duration: 90,
+            duration: 120,
             emergency: true,
             timestamp: new Date().toISOString()
         };
         
         STORAGE.addSession(session);
+        
+        // Remove pulse animation after 2 seconds
+        setTimeout(() => {
+            emergencyBtn.classList.remove('pulse');
+        }, 2000);
     }
 
     saveSession() {
@@ -558,49 +369,73 @@ class LimenApp {
         }
     }
 
-    // WEEKLY SUMMARY FUNCTIONS
-    loadWeeklySummary() {
+    // NEUROPSYCHOLOGICAL SUMMARY FUNCTIONS
+    showNeuropsychologicalSummary() {
+        this.showScreen('summary');
+        this.loadNeuropsychologicalSummary();
+    }
+
+    loadNeuropsychologicalSummary() {
         const stats = STORAGE.getStats();
         if (!stats) return;
         
         // Update basic stats
         document.getElementById('total-sessions').textContent = stats.totalSessions || 0;
         document.getElementById('effectiveness-rate').textContent = stats.effectivenessRate + '%' || '0%';
-        document.getElementById('avg-time').textContent = (stats.avgDuration || 0) + 's';
+        document.getElementById('current-streak').textContent = stats.currentStreak || 0;
+        
+        // Load pattern insight
+        this.loadPatternInsight(stats);
         
         // Load state distribution chart
-        this.loadStateDistribution();
+        this.loadStateDistribution(stats);
         
-        // Load insight
-        this.loadWeeklyInsight();
+        // Load psychological tip
+        this.loadPsychologicalTip(stats);
     }
 
-    loadStateDistribution() {
-        const history = STORAGE.getSessionHistory(7);
-        if (history.length === 0) return;
+    loadPatternInsight(stats) {
+        const insightEl = document.getElementById('pattern-insight');
         
-        // Count states
-        const stateCounts = {};
-        history.forEach(session => {
-            if (session.state) {
-                stateCounts[session.state] = (stateCounts[session.state] || 0) + 1;
+        if (stats.totalSessions === 0) {
+            insightEl.textContent = 'Complete your first session to see pattern insights.';
+            return;
+        }
+        
+        if (stats.patterns) {
+            const stateName = getStateDisplayName(stats.patterns.state);
+            insightEl.textContent = `You frequently experience ${stateName.toLowerCase()} (${stats.patterns.percentage}% of sessions). This suggests a pattern in your nervous system responses.`;
+        } else if (stats.effectivenessTrend) {
+            switch(stats.effectivenessTrend) {
+                case 'improving':
+                    insightEl.textContent = 'Your regulation effectiveness is improving! Your nervous system is becoming more resilient.';
+                    break;
+                case 'declining':
+                    insightEl.textContent = 'Notice any recent changes that might be affecting your regulation?';
+                    break;
+                default:
+                    insightEl.textContent = 'Your regulation patterns are stable. Consistency builds long-term resilience.';
             }
-        });
-        
-        // Find max for percentage calculation
-        const maxCount = Math.max(...Object.values(stateCounts));
-        
-        // Create chart
+        } else {
+            insightEl.textContent = 'Continue tracking to uncover deeper patterns in your nervous system responses.';
+        }
+    }
+
+    loadStateDistribution(stats) {
         const chartContainer = document.getElementById('state-chart');
         chartContainer.innerHTML = '';
         
+        if (!stats.stateFrequency || Object.keys(stats.stateFrequency).length === 0) {
+            return;
+        }
+        
         // Sort states by frequency
-        const sortedStates = Object.entries(stateCounts)
+        const sortedStates = Object.entries(stats.stateFrequency)
             .sort(([,a], [,b]) => b - a)
-            .slice(0, 6); // Show top 6
+            .slice(0, 4); // Show top 4
         
         sortedStates.forEach(([stateId, count]) => {
-            const percentage = Math.round((count / history.length) * 100);
+            const percentage = Math.round((count / stats.totalSessions) * 100);
             const displayName = getStateDisplayName(stateId);
             const color = getStateColor(stateId);
             
@@ -619,116 +454,38 @@ class LimenApp {
         });
     }
 
-    loadWeeklyInsight() {
-        const history = STORAGE.getSessionHistory(7);
-        if (history.length === 0) {
-            document.getElementById('weekly-insight').textContent = 'Complete your first session to see insights.';
-            return;
-        }
+    loadPsychologicalTip(stats) {
+        const tipEl = document.getElementById('psychological-tip');
         
-        // Generate insight using state engine
-        const insight = STATE_ENGINE.generateInsight(history);
-        document.getElementById('weekly-insight').textContent = insight;
-    }
-
-    shouldShowWeeklySummary() {
-        const data = STORAGE.getData();
-        if (!data || !data.userProfile) return false;
-        
-        const lastSummaryShown = data.userProfile.lastSummaryShown;
-        if (!lastSummaryShown) return true;
-        
-        const lastDate = new Date(lastSummaryShown);
-        const today = new Date();
-        
-        // Show summary once per week or after 5 consecutive successful sessions
-        const daysSinceLastSummary = (today - lastDate) / (1000 * 60 * 60 * 24);
-        
-        // Check for 5 consecutive successful sessions
-        const recentSessions = STORAGE.getSessionHistory(5);
-        const consecutiveSuccess = recentSessions.length >= 5 && 
-                                  recentSessions.every(s => s.feedback === 'yes');
-        
-        return daysSinceLastSummary >= 7 || consecutiveSuccess;
-    }
-
-    showWeeklySummary() {
-        this.showScreen('summary');
-        
-        // Record that summary was shown
-        STORAGE.updateProfile('lastSummaryShown', new Date().toISOString());
-    }
-
-    checkWeeklySummaryPrompt() {
-        // Check on Mondays if we should prompt for weekly summary
-        const today = new Date();
-        if (today.getDay() === 1) { // Monday
-            const data = STORAGE.getData();
-            const lastMondayPrompt = data.userProfile.lastMondayPrompt;
+        if (stats.psychologicalInsight && stats.psychologicalInsight.psychologicalTip) {
+            tipEl.textContent = stats.psychologicalInsight.psychologicalTip;
+        } else if (stats.patterns) {
+            // Generate tip based on dominant pattern
+            const tips = {
+                'CognitiveOverdrive': 'Try scheduling "cognitive breaks" every 90 minutes to prevent overwhelm.',
+                'SomaticTension': 'Daily body awareness practices can help release stored tension.',
+                'RecoveryDebt': 'Schedule recovery periods before exhaustion hits.',
+                'Hypervigilance': 'Grounding techniques help signal safety to your nervous system.',
+                'EmotionalLoad': 'Naming emotions creates space between feeling and reaction.',
+                'ShutdownDrift': 'Micro-movements can help maintain connection without overwhelm.'
+            };
             
-            if (!lastMondayPrompt || 
-                new Date(lastMondayPrompt).toDateString() !== today.toDateString()) {
-                
-                // Record that we prompted this Monday
-                STORAGE.updateProfile('lastMondayPrompt', today.toISOString());
-            }
+            tipEl.textContent = tips[stats.patterns.state] || 'Regular regulation strengthens your nervous system over time.';
+        } else {
+            tipEl.textContent = 'The vagus nerve responds to regular practice. Each regulation session builds resilience.';
         }
     }
 
-    checkZenMode() {
-        const data = STORAGE.getData();
-        if (data?.userProfile?.preferences?.zenMode) {
-            document.body.classList.add('zen-mode');
+    checkEmergencyButtonVisibility() {
+        const history = STORAGE.getSessionHistory(1); // Last day
+        const recentNegativeFeedback = history.filter(s => s.feedback === 'no').length;
+        const shouldShow = recentNegativeFeedback >= 2 || 
+                          (history.length >= 5 && recentNegativeFeedback >= 1);
+        
+        const emergencyReset = document.getElementById('emergency-reset');
+        if (emergencyReset) {
+            emergencyReset.style.display = shouldShow ? 'block' : 'none';
         }
-    }
-
-    toggleZenMode() {
-        const isZen = document.body.classList.toggle('zen-mode');
-        STORAGE.updateSetting('zenMode', isZen);
-        
-        this.showToast(isZen ? 'Zen mode enabled' : 'Zen mode disabled');
-        return isZen;
-    }
-
-    toggleAudio() {
-        if (!window.audioManager) return false;
-        const enabled = window.audioManager.toggle(!window.audioManager.isEnabled);
-        this.showToast(enabled ? 'Ambient audio enabled' : 'Ambient audio disabled');
-        return enabled;
-    }
-
-    toggleHaptic() {
-        const data = STORAGE.getData();
-        const current = data?.userProfile?.preferences?.hapticFeedback ?? true;
-        const newValue = !current;
-        STORAGE.updateSetting('hapticFeedback', newValue);
-        this.showToast(newValue ? 'Haptic feedback enabled' : 'Haptic feedback disabled');
-        return newValue;
-    }
-
-    showToast(message, duration = 2000) {
-        // Remove existing toast
-        const existingToast = document.querySelector('.toast-notification');
-        if (existingToast) {
-            existingToast.remove();
-        }
-        
-        // Create new toast
-        const toast = document.createElement('div');
-        toast.className = 'toast-notification';
-        toast.textContent = message;
-        
-        document.body.appendChild(toast);
-        
-        // Remove after duration
-        setTimeout(() => {
-            toast.style.animation = 'fadeOut 0.3s ease forwards';
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 300);
-        }, duration);
     }
 
     resetSession() {
@@ -744,22 +501,8 @@ class LimenApp {
             this.timerInterval = null;
         }
         
-        if (this.pulseInterval) {
-            clearInterval(this.pulseInterval);
-            this.pulseInterval = null;
-        }
-        
         if (this.glowElement) {
             this.glowElement.classList.remove('amber');
-        }
-        
-        if (this.pulseElement) {
-            this.pulseElement.classList.remove('active');
-        }
-        
-        // Stop audio
-        if (window.audioManager) {
-            window.audioManager.stopAll();
         }
     }
 
@@ -770,16 +513,8 @@ class LimenApp {
             clearInterval(this.timerInterval);
         }
         
-        if (this.pulseInterval) {
-            clearInterval(this.pulseInterval);
-        }
-        
         if (window.pushManager) {
             window.pushManager.stop();
-        }
-        
-        if (window.audioManager) {
-            window.audioManager.stopAll();
         }
     }
 
@@ -791,12 +526,7 @@ class LimenApp {
         console.log('Current State:', this.currentState);
         console.log('Current Session ID:', this.currentSessionId);
         console.log('Screen:', this.currentScreen);
-        console.log('Audio Manager:', window.audioManager ? 'Available' : 'Not available');
-        console.log('Push Manager:', window.pushManager ? 'Available' : 'Not available');
-        console.log('Environment Sensor:', window.environmentSensor ? 'Available' : 'Not available');
         console.log('========================');
-        
-        this.showToast('Debug info logged to console', 3000);
     }
 }
 
@@ -813,52 +543,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // Ctrl+Shift+S for summary
             if (e.ctrlKey && e.shiftKey && e.key === 'S') {
                 e.preventDefault();
-                app.showWeeklySummary();
+                app.showNeuropsychologicalSummary();
             }
             // Ctrl+Shift+D for debug info
             if (e.ctrlKey && e.shiftKey && e.key === 'D') {
                 e.preventDefault();
                 app.showDebugInfo();
             }
-            // Ctrl+Shift+Z for zen mode toggle
-            if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
-                e.preventDefault();
-                app.toggleZenMode();
-            }
-            // Ctrl+Shift+A for audio toggle
-            if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-                e.preventDefault();
-                app.toggleAudio();
-            }
-            // Ctrl+Shift+H for haptic toggle
-            if (e.ctrlKey && e.shiftKey && e.key === 'H') {
-                e.preventDefault();
-                app.toggleHaptic();
-            }
         });
         
         console.log('LIMEN App initialized successfully');
-        
-        // Handle service worker updates
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log('Service Worker updated, reloading...');
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
-            });
-        }
-        
     } catch (error) {
         console.error('Failed to initialize LIMEN App:', error);
-        // Show error to user
-        alert('Error initializing LIMEN. Please refresh the page.');
     }
 });
 
-// Handle page unload
-window.addEventListener('beforeunload', () => {
-    if (app) {
-        app.cleanup();
-    }
-});
+// Handle service worker updates
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('Service Worker updated, reloading...');
+        setTimeout(() => {
+            window.location.reload();
+        }, 1000);
+    });
+}
