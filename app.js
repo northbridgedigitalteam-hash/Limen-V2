@@ -1,4 +1,4 @@
-// Main Application Logic - ENHANCED
+// Main Application Logic - INTELLIGENT VERSION
 class LimenApp {
     constructor() {
         this.currentScreen = 'entry';
@@ -10,21 +10,34 @@ class LimenApp {
         this.feedbackGiven = false;
         this.currentSessionId = null;
         this.glowElement = null;
+        this.useIntelligence = true; // Enable intelligent features
         
         this.init();
     }
 
     init() {
-        console.log('LIMEN App initializing...');
+        console.log('LIMEN Intelligent App initializing...');
         
         // Bind all events
         this.bindEvents();
         
-        // Don't auto-navigate - wait for user to click Continue
+        // Show entry screen
         this.showScreen('entry');
         
         // Check emergency button visibility
         setTimeout(() => this.checkEmergencyButtonVisibility(), 1000);
+        
+        // Initialize intelligence features
+        this.initializeIntelligence();
+    }
+
+    initializeIntelligence() {
+        // Check if user has enough data for intelligent features
+        const stats = STORAGE.getStats();
+        if (stats && stats.totalSessions >= 3) {
+            this.useIntelligence = true;
+            console.log('Intelligent features enabled for user with', stats.totalSessions, 'sessions');
+        }
     }
 
     bindEvents() {
@@ -83,8 +96,41 @@ class LimenApp {
                 case 'summary':
                     this.loadNeuropsychologicalSummary();
                     break;
+                case 'state':
+                    this.updateStateSelectionWithIntelligence();
+                    break;
             }
         }
+    }
+
+    // Update state selection with intelligent ordering
+    updateStateSelectionWithIntelligence() {
+        if (!this.useIntelligence) return;
+        
+        const stats = STORAGE.getStats();
+        if (!stats || !stats.stateFrequency) return;
+        
+        const stateButtons = document.querySelectorAll('.btn-state');
+        stateButtons.forEach(btn => {
+            const state = btn.dataset.state;
+            const frequency = stats.stateFrequency[state] || 0;
+            const effectiveness = stats.stateEffectiveness[state] || 0;
+            
+            // Add intelligence indicator
+            if (frequency > 0) {
+                let indicator = '';
+                if (effectiveness >= 70) {
+                    indicator = ' ✓'; // High effectiveness
+                } else if (effectiveness >= 50) {
+                    indicator = ' ~'; // Moderate effectiveness
+                }
+                
+                // Add frequency count if more than 1
+                if (frequency > 1) {
+                    btn.innerHTML = `${btn.textContent} <small>(${frequency})${indicator}</small>`;
+                }
+            }
+        });
     }
 
     selectState(state) {
@@ -99,17 +145,30 @@ class LimenApp {
     }
 
     showIntervention(state) {
-        this.currentIntervention = getIntervention(state);
+        // Get intelligent intervention recommendation
+        this.currentIntervention = getIntervention(state, this.useIntelligence);
         
         if (!this.currentIntervention) {
             console.error('No intervention found for state:', state);
-            this.currentIntervention = getIntervention("CognitiveOverdrive");
+            this.currentIntervention = getIntervention("CognitiveOverdrive", false);
         }
         
-        // Update UI
+        // Update UI with intervention
         const interventionText = document.getElementById('intervention-text');
         if (interventionText) {
             interventionText.textContent = this.currentIntervention.text;
+            
+            // Add intelligence indicator if using smart recommendation
+            if (this.useIntelligence) {
+                const stats = STORAGE.getStats();
+                if (stats && stats.stateEffectiveness[state]) {
+                    const effectiveness = stats.stateEffectiveness[state];
+                    const interventionTitle = document.getElementById('intervention-title');
+                    if (interventionTitle) {
+                        interventionTitle.textContent = `Recommended (${effectiveness}% effective for you)`;
+                    }
+                }
+            }
         }
         
         // Set timer values
@@ -191,27 +250,56 @@ class LimenApp {
         
         const feedbackMessage = document.getElementById('feedback-message');
         
-        switch(feedback) {
-            case 'yes':
-                if (feedbackMessage) {
+        // Update feedback message based on intelligence
+        const stats = STORAGE.getStats();
+        if (stats && this.useIntelligence) {
+            switch(feedback) {
+                case 'yes':
+                    if (stats.currentStreak > 1) {
+                        feedbackMessage.textContent = `Excellent! ${stats.currentStreak} successful sessions in a row.`;
+                    } else {
+                        feedbackMessage.textContent = 'Successfully regulated.';
+                    }
+                    this.handlePositiveFeedback();
+                    break;
+                    
+                case 'little':
+                    const partialSuccessRate = stats.partialSuccessCount / stats.totalSessions * 100;
+                    if (partialSuccessRate > 30) {
+                        feedbackMessage.textContent = 'Partial success. Trying a different approach...';
+                    } else {
+                        feedbackMessage.textContent = 'Some improvement. Adjusting technique...';
+                    }
+                    this.handlePartialFeedback();
+                    break;
+                    
+                case 'no':
+                    if (stats.stateEffectiveness[this.currentState] < 30) {
+                        feedbackMessage.textContent = 'Noticing patterns. Trying alternative state...';
+                    } else {
+                        feedbackMessage.textContent = 'Adjusting approach based on your patterns...';
+                    }
+                    this.handleNegativeFeedback();
+                    break;
+            }
+        } else {
+            // Default messages
+            switch(feedback) {
+                case 'yes':
                     feedbackMessage.textContent = 'Returning to baseline.';
-                }
-                this.handlePositiveFeedback();
-                break;
-                
-            case 'little':
-                if (feedbackMessage) {
+                    this.handlePositiveFeedback();
+                    break;
+                    
+                case 'little':
                     feedbackMessage.textContent = 'Trying alternative...';
-                }
-                this.handlePartialFeedback();
-                break;
-                
-            case 'no':
-                if (feedbackMessage) {
+                    this.handlePartialFeedback();
+                    break;
+                    
+                case 'no':
                     feedbackMessage.textContent = 'Adjusting...';
-                }
-                this.handleNegativeFeedback();
-                break;
+                    this.handleNegativeFeedback();
+                    break;
+            }
         }
         
         // Update session with feedback
@@ -228,13 +316,21 @@ class LimenApp {
 
     handlePartialFeedback() {
         setTimeout(() => {
-            // Show alternative intervention
+            // Show alternative intervention based on intelligence
             const alternative = getAlternativeIntervention(this.currentState);
             this.currentIntervention = alternative;
             
             const interventionText = document.getElementById('intervention-text');
             if (interventionText) {
                 interventionText.textContent = alternative.text;
+                
+                // Add note about trying alternative
+                if (this.useIntelligence) {
+                    const interventionTitle = document.getElementById('intervention-title');
+                    if (interventionTitle) {
+                        interventionTitle.textContent = 'Alternative approach';
+                    }
+                }
             }
             
             this.timeRemaining = alternative.duration;
@@ -258,11 +354,54 @@ class LimenApp {
 
     handleNegativeFeedback() {
         setTimeout(() => {
-            // Try a different state
-            const newState = this.getFallbackState();
+            // Try a different state based on intelligence
+            const newState = this.getIntelligentFallbackState();
             this.selectState(newState);
             this.feedbackGiven = false;
         }, 1500);
+    }
+
+    getIntelligentFallbackState() {
+        const stats = STORAGE.getStats();
+        
+        // If we have intelligence data, use it
+        if (this.useIntelligence && stats && stats.intelligence) {
+            // Check for most effective state for this user
+            const mostEffective = stats.intelligence.mostEffectiveInterventions[0];
+            if (mostEffective && mostEffective.effectiveness > 60) {
+                return mostEffective.state;
+            }
+            
+            // Check user patterns for frequently co-occurring states
+            const currentState = this.currentState;
+            const history = STORAGE.getSessionHistory(30);
+            
+            // Find what state users typically go to after current state
+            const transitions = {};
+            for (let i = 0; i < history.length - 1; i++) {
+                if (history[i].state === currentState && history[i + 1].state) {
+                    const nextState = history[i + 1].state;
+                    transitions[nextState] = (transitions[nextState] || 0) + 1;
+                }
+            }
+            
+            // Find most common transition
+            let mostCommon = null;
+            let maxCount = 0;
+            for (const [state, count] of Object.entries(transitions)) {
+                if (count > maxCount) {
+                    maxCount = count;
+                    mostCommon = state;
+                }
+            }
+            
+            if (mostCommon && mostCommon !== currentState) {
+                return mostCommon;
+            }
+        }
+        
+        // Fallback to default logic
+        return this.getFallbackState();
     }
 
     getFallbackState() {
@@ -344,7 +483,8 @@ class LimenApp {
             duration: this.currentIntervention.duration || 90,
             feedback: null,
             timestamp: new Date().toISOString(),
-            returnedToBaseline: false
+            returnedToBaseline: false,
+            intelligentRecommendation: this.useIntelligence
         };
         
         const savedSession = STORAGE.addSession(session);
@@ -369,7 +509,7 @@ class LimenApp {
         }
     }
 
-    // NEUROPSYCHOLOGICAL SUMMARY FUNCTIONS
+    // NEUROPSYCHOLOGICAL SUMMARY FUNCTIONS - INTELLIGENT VERSION
     showNeuropsychologicalSummary() {
         this.showScreen('summary');
         this.loadNeuropsychologicalSummary();
@@ -382,62 +522,128 @@ class LimenApp {
         // Update basic stats
         document.getElementById('total-sessions').textContent = stats.totalSessions || 0;
         document.getElementById('effectiveness-rate').textContent = stats.effectivenessRate + '%' || '0%';
-        document.getElementById('current-streak').textContent = stats.currentStreak || 0;
         
-        // Load pattern insight
-        this.loadPatternInsight(stats);
+        // Show improvement if any
+        const currentStreakEl = document.getElementById('current-streak');
+        if (currentStreakEl) {
+            if (stats.improvement > 0) {
+                currentStreakEl.textContent = `+${stats.improvement}% improvement`;
+                currentStreakEl.style.color = '#6bc5a6';
+            } else if (stats.improvement < 0) {
+                currentStreakEl.textContent = `${stats.improvement}% change`;
+                currentStreakEl.style.color = '#ff6b6b';
+            } else {
+                currentStreakEl.textContent = stats.currentStreak || 0;
+                currentStreakEl.style.color = '';
+            }
+        }
+        
+        // Load intelligent pattern insight
+        this.loadIntelligentPatternInsight(stats);
         
         // Load state distribution chart
-        this.loadStateDistribution(stats);
+        this.loadIntelligentStateDistribution(stats);
         
-        // Load psychological tip
-        this.loadPsychologicalTip(stats);
+        // Load personalized neuroscience insight
+        this.loadPersonalizedNeuroscienceTip(stats);
     }
 
-    loadPatternInsight(stats) {
+    loadIntelligentPatternInsight(stats) {
         const insightEl = document.getElementById('pattern-insight');
         
         if (stats.totalSessions === 0) {
-            insightEl.textContent = 'Complete your first session to see pattern insights.';
+            insightEl.textContent = 'Complete your first session to unlock intelligent pattern insights.';
             return;
         }
         
-        if (stats.patterns) {
-            const stateName = getStateDisplayName(stats.patterns.state);
-            insightEl.textContent = `You frequently experience ${stateName.toLowerCase()} (${stats.patterns.percentage}% of sessions). This suggests a pattern in your nervous system responses.`;
-        } else if (stats.effectivenessTrend) {
-            switch(stats.effectivenessTrend) {
-                case 'improving':
-                    insightEl.textContent = 'Your regulation effectiveness is improving! Your nervous system is becoming more resilient.';
-                    break;
-                case 'declining':
-                    insightEl.textContent = 'Notice any recent changes that might be affecting your regulation?';
-                    break;
-                default:
-                    insightEl.textContent = 'Your regulation patterns are stable. Consistency builds long-term resilience.';
+        if (stats.personalizedInsight && stats.personalizedInsight.text) {
+            insightEl.textContent = stats.personalizedInsight.text;
+            return;
+        }
+        
+        // Generate insight from intelligence data
+        if (stats.intelligence) {
+            const intel = stats.intelligence;
+            
+            // Check for dominant pattern
+            if (intel.dominantStates && intel.dominantStates.length > 0) {
+                const dominant = intel.dominantStates[0];
+                if (dominant.count >= 3) {
+                    const stateName = getStateDisplayName(dominant.state);
+                    const percentage = Math.round((dominant.count / Math.min(stats.totalSessions, 20)) * 100);
+                    insightEl.textContent = `Your nervous system shows a recurring pattern of ${stateName.toLowerCase()} (${percentage}% of recent sessions).`;
+                    return;
+                }
             }
+            
+            // Check for time patterns
+            if (intel.bestTimes && intel.bestTimes.length > 0) {
+                const bestTime = intel.bestTimes[0];
+                if (bestTime.effectiveness >= 80 && bestTime.total >= 3) {
+                    const timeOfDay = bestTime.hour < 12 ? 'morning' : bestTime.hour < 17 ? 'afternoon' : 'evening';
+                    insightEl.textContent = `Your regulation is most effective in the ${timeOfDay} (${Math.round(bestTime.effectiveness)}% success rate).`;
+                    return;
+                }
+            }
+            
+            // Check for most effective interventions
+            if (intel.mostEffectiveInterventions && intel.mostEffectiveInterventions.length > 0) {
+                const mostEffective = intel.mostEffectiveInterventions[0];
+                if (mostEffective.effectiveness >= 70 && mostEffective.total >= 3) {
+                    const stateName = getStateDisplayName(mostEffective.state);
+                    insightEl.textContent = `You're particularly skilled at regulating ${stateName.toLowerCase()} (${Math.round(mostEffective.effectiveness)}% effective).`;
+                    return;
+                }
+            }
+        }
+        
+        // Default insight based on effectiveness
+        if (stats.effectivenessRate >= 70) {
+            insightEl.textContent = 'Your nervous system shows strong regulation capacity with consistent effectiveness.';
+        } else if (stats.effectivenessRate >= 50) {
+            insightEl.textContent = 'You\'re developing reliable regulation skills. Notice which techniques feel most natural.';
         } else {
-            insightEl.textContent = 'Continue tracking to uncover deeper patterns in your nervous system responses.';
+            insightEl.textContent = 'Regulation improves with practice. Each session strengthens your neural pathways.';
         }
     }
 
-    loadStateDistribution(stats) {
+    loadIntelligentStateDistribution(stats) {
         const chartContainer = document.getElementById('state-chart');
         chartContainer.innerHTML = '';
         
         if (!stats.stateFrequency || Object.keys(stats.stateFrequency).length === 0) {
+            chartContainer.innerHTML = '<p style="color: #a0a0b0; text-align: center;">No state data yet</p>';
             return;
         }
         
-        // Sort states by frequency
+        // Sort states by frequency with effectiveness coloring
         const sortedStates = Object.entries(stats.stateFrequency)
             .sort(([,a], [,b]) => b - a)
-            .slice(0, 4); // Show top 4
+            .slice(0, 6); // Show top 6
         
         sortedStates.forEach(([stateId, count]) => {
             const percentage = Math.round((count / stats.totalSessions) * 100);
             const displayName = getStateDisplayName(stateId);
             const color = getStateColor(stateId);
+            const effectiveness = stats.stateEffectiveness[stateId] || 0;
+            
+            // Adjust opacity based on effectiveness
+            let opacity = 1;
+            let effectivenessText = '';
+            
+            if (effectiveness >= 70) {
+                opacity = 1;
+                effectivenessText = '✓ High effectiveness';
+            } else if (effectiveness >= 50) {
+                opacity = 0.8;
+                effectivenessText = '~ Moderate effectiveness';
+            } else if (effectiveness > 0) {
+                opacity = 0.6;
+                effectivenessText = 'Developing';
+            } else {
+                opacity = 0.4;
+                effectivenessText = 'No data';
+            }
             
             const barElement = document.createElement('div');
             barElement.className = 'chart-bar';
@@ -445,39 +651,42 @@ class LimenApp {
             barElement.innerHTML = `
                 <span class="chart-label">${displayName}</span>
                 <div class="chart-bar-container">
-                    <div class="chart-bar-fill" style="width: ${percentage}%; background-color: ${color};"></div>
+                    <div class="chart-bar-fill" style="width: ${percentage}%; background-color: ${color}; opacity: ${opacity};"></div>
                 </div>
-                <span style="min-width: 40px; text-align: right; color: ${color}; font-weight: 500;">${percentage}%</span>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; min-width: 80px;">
+                    <span style="color: ${color}; font-weight: 500;">${percentage}%</span>
+                    <small style="font-size: 0.7rem; color: #a0a0b0;">${effectivenessText}</small>
+                </div>
             `;
             
             chartContainer.appendChild(barElement);
         });
     }
 
-    loadPsychologicalTip(stats) {
+    loadPersonalizedNeuroscienceTip(stats) {
         const tipEl = document.getElementById('psychological-tip');
         
-        if (stats.psychologicalInsight && stats.psychologicalInsight.psychologicalTip) {
-            tipEl.textContent = stats.psychologicalInsight.psychologicalTip;
-        } else if (stats.patterns) {
-            // Generate tip based on dominant pattern
-            const tips = {
-                'CognitiveOverdrive': 'Try scheduling "cognitive breaks" every 90 minutes to prevent overwhelm.',
-                'SomaticTension': 'Daily body awareness practices can help release stored tension.',
-                'RecoveryDebt': 'Schedule recovery periods before exhaustion hits.',
-                'Hypervigilance': 'Grounding techniques help signal safety to your nervous system.',
-                'EmotionalLoad': 'Naming emotions creates space between feeling and reaction.',
-                'ShutdownDrift': 'Micro-movements can help maintain connection without overwhelm.'
-            };
+        if (!stats || stats.totalSessions < 3) {
+            tipEl.textContent = 'The vagus nerve regulates your stress response. Complete 3+ sessions for personalized neuroscience insights.';
+            return;
+        }
+        
+        // Get personalized tip based on user data
+        const personalizedTip = STORAGE.getPersonalizedNeuroscienceTip(this.currentState);
+        tipEl.textContent = personalizedTip;
+        
+        // Add data citation if we have enough data
+        if (stats.totalSessions >= 10) {
+            const effectiveness = stats.effectivenessRate;
+            const adaptation = stats.adaptationLevel || 1;
             
-            tipEl.textContent = tips[stats.patterns.state] || 'Regular regulation strengthens your nervous system over time.';
-        } else {
-            tipEl.textContent = 'The vagus nerve responds to regular practice. Each regulation session builds resilience.';
+            // Add adaptation level indicator
+            tipEl.innerHTML += `<br><small style="color: #6bc5a6; margin-top: 0.5rem; display: block;">Adaptation Level: ${adaptation}/5 (based on ${stats.totalSessions} sessions)</small>`;
         }
     }
 
     checkEmergencyButtonVisibility() {
-        const history = STORAGE.getSessionHistory(1); // Last day
+        const history = STORAGE.getSessionHistory(1);
         const recentNegativeFeedback = history.filter(s => s.feedback === 'no').length;
         const totalSessions = STORAGE.getStats()?.totalSessions || 0;
         
@@ -488,7 +697,7 @@ class LimenApp {
         
         const emergencyReset = document.getElementById('emergency-reset');
         if (emergencyReset) {
-            emergencyReset.style.display = 'block'; // Always show
+            emergencyReset.style.display = 'block';
             if (shouldShow) {
                 emergencyReset.classList.add('active');
             } else {
@@ -530,11 +739,13 @@ class LimenApp {
     // Debug methods
     showDebugInfo() {
         const stats = STORAGE.getStats();
-        console.log('=== LIMEN DEBUG INFO ===');
-        console.log('App Stats:', stats);
+        console.log('=== LIMEN INTELLIGENT DEBUG INFO ===');
+        console.log('Total Sessions:', stats?.totalSessions);
+        console.log('Effectiveness Rate:', stats?.effectivenessRate + '%');
+        console.log('Adaptation Level:', stats?.adaptationLevel);
         console.log('Current State:', this.currentState);
-        console.log('Current Session ID:', this.currentSessionId);
-        console.log('Screen:', this.currentScreen);
+        console.log('Using Intelligence:', this.useIntelligence);
+        console.log('Intelligence Data:', stats?.intelligence);
         console.log('========================');
     }
 }
@@ -554,16 +765,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 app.showNeuropsychologicalSummary();
             }
-            // Ctrl+Shift+D for debug info
-            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            // Ctrl+Shift+I for intelligence info
+            if (e.ctrlKey && e.shiftKey && e.key === 'I') {
                 e.preventDefault();
                 app.showDebugInfo();
             }
         });
         
-        console.log('LIMEN App initialized successfully');
+        console.log('LIMEN Intelligent App initialized successfully');
     } catch (error) {
-        console.error('Failed to initialize LIMEN App:', error);
+        console.error('Failed to initialize LIMEN Intelligent App:', error);
     }
 });
 
@@ -577,7 +788,7 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// Ambient Audio Manager
+// Ambient Audio Manager (unchanged from previous)
 class AudioManager {
     constructor() {
         this.audioContext = null;
@@ -589,13 +800,11 @@ class AudioManager {
     }
     
     async init() {
-        // Create audio context on user interaction
         if (window.AudioContext || window.webkitAudioContext) {
             try {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 console.log('Audio context created');
                 
-                // Resume context if suspended
                 if (this.audioContext.state === 'suspended') {
                     await this.audioContext.resume();
                 }
@@ -610,7 +819,6 @@ class AudioManager {
         this.isEnabled = data?.userProfile?.preferences?.ambientAudio || false;
     }
     
-    // Generate soothing brown noise
     playBrownNoise(duration = 90) {
         if (!this.isEnabled || !this.audioContext) return;
         
@@ -630,7 +838,6 @@ class AudioManager {
             const source = this.audioContext.createBufferSource();
             source.buffer = buffer;
             
-            // Create gain node for fade in/out
             const gainNode = this.audioContext.createGain();
             source.connect(gainNode);
             gainNode.connect(this.audioContext.destination);
@@ -643,10 +850,8 @@ class AudioManager {
             source.start();
             this.currentSound = source;
             
-            // Auto-stop after duration
             source.stop(now + duration);
             
-            // Clean up after completion
             source.onended = () => {
                 this.currentSound = null;
             };
@@ -656,7 +861,6 @@ class AudioManager {
         }
     }
     
-    // Gentle frequency sweep for focus
     playFocusTone(duration = 60) {
         if (!this.isEnabled || !this.audioContext) return;
         
@@ -702,7 +906,6 @@ class AudioManager {
     
     toggle(enabled) {
         this.isEnabled = enabled;
-        // Use updateProfile instead of updateSetting
         STORAGE.updateProfile('preferences', {
             ...(STORAGE.getData()?.userProfile?.preferences || {}),
             ambientAudio: enabled
@@ -723,26 +926,22 @@ class AudioManager {
 // Initialize audio manager
 let audioManager = null;
 
-// Initialize on first user interaction
 function initAudioOnInteraction() {
     if (!audioManager && (window.AudioContext || window.webkitAudioContext)) {
         audioManager = new AudioManager();
         audioManager.init();
         
-        // Remove event listeners
         document.removeEventListener('click', initAudioOnInteraction);
         document.removeEventListener('touchstart', initAudioOnInteraction);
     }
 }
 
-// Add event listeners for audio initialization
 document.addEventListener('click', initAudioOnInteraction, { once: true });
 document.addEventListener('touchstart', initAudioOnInteraction, { once: true });
 
-// Export for app.js
 window.audioManager = audioManager;
 
-// Simple environmental awareness
+// Environment Sensor (unchanged)
 class EnvironmentSensor {
     constructor() {
         this.lastInteractionTime = Date.now();
@@ -753,7 +952,6 @@ class EnvironmentSensor {
     }
     
     init() {
-        // Track screen time indirectly
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 this.recordInactivity();
@@ -763,11 +961,9 @@ class EnvironmentSensor {
             }
         });
         
-        // Track interaction frequency
         document.addEventListener('click', this.recordActivity.bind(this));
         document.addEventListener('touchstart', this.recordActivity.bind(this));
         
-        // Start inactivity monitor
         this.startInactivityMonitor();
     }
     
@@ -780,14 +976,12 @@ class EnvironmentSensor {
             duration: timeSinceLast
         });
         
-        // Keep only last 100 interactions
         if (this.activityPattern.length > 100) {
             this.activityPattern.shift();
         }
         
         this.lastInteractionTime = now;
         
-        // Reset inactivity timer
         if (this.inactivityTimer) {
             clearTimeout(this.inactivityTimer);
         }
@@ -795,14 +989,13 @@ class EnvironmentSensor {
     }
     
     recordInactivity() {
-        // Could log inactivity for patterns
         console.log('User inactive, screen hidden');
     }
     
     startInactivityMonitor() {
         this.inactivityTimer = setTimeout(() => {
             this.checkInactivityNotification();
-        }, 30 * 60 * 1000); // Check every 30 minutes
+        }, 30 * 60 * 1000);
     }
     
     checkInactivityNotification() {
@@ -812,8 +1005,7 @@ class EnvironmentSensor {
         const now = Date.now();
         const inactiveTime = now - this.lastInteractionTime;
         
-        // Only suggest if truly inactive for a while
-        if (inactiveTime > 45 * 60 * 1000) { // 45 minutes
+        if (inactiveTime > 45 * 60 * 1000) {
             this.suggestMicroBreak();
         }
     }
@@ -822,12 +1014,11 @@ class EnvironmentSensor {
         const data = STORAGE.getData();
         if (!data?.userProfile?.notificationEnabled) return;
         
-        // Check if we've suggested recently
         const lastSuggestion = data.userProfile.lastMicroBreakSuggestion;
         if (lastSuggestion) {
             const lastTime = new Date(lastSuggestion);
             const hoursSince = (Date.now() - lastTime.getTime()) / (1000 * 60 * 60);
-            if (hoursSince < 2) return; // Don't suggest more than every 2 hours
+            if (hoursSince < 2) return;
         }
         
         const messages = [
@@ -839,7 +1030,6 @@ class EnvironmentSensor {
         
         const randomMessage = messages[Math.floor(Math.random() * messages.length)];
         
-        // Show notification if permission granted
         if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('LIMEN', {
                 body: randomMessage,
@@ -847,7 +1037,6 @@ class EnvironmentSensor {
                 silent: true
             });
             
-            // Record the suggestion
             STORAGE.updateProfile('lastMicroBreakSuggestion', new Date().toISOString());
         }
     }
@@ -860,13 +1049,12 @@ class EnvironmentSensor {
         
         return {
             avgInterval,
-            isHighFrequency: avgInterval < 5000, // Less than 5 seconds between interactions
+            isHighFrequency: avgInterval < 5000,
             lastActive: this.lastInteractionTime,
             totalInteractions: this.activityPattern.length
         };
     }
     
-    // Estimate cognitive load based on interaction patterns
     estimateCognitiveLoad() {
         const pattern = this.getActivityPattern();
         
@@ -883,6 +1071,5 @@ class EnvironmentSensor {
     }
 }
 
-// Initialize environment sensor
 const environmentSensor = new EnvironmentSensor();
 window.environmentSensor = environmentSensor;
