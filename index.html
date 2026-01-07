@@ -32,27 +32,37 @@
     <!-- Windows -->
     <meta name="msapplication-TileColor" content="#1c1c23">
     <meta name="msapplication-TileImage" content="icon-192.png">
-    <meta name="msapplication-config" content="browserconfig.xml">
-    
-    <!-- Open Graph / Social Sharing -->
-    <meta property="og:title" content="LIMEN">
-    <meta property="og:description" content="Nervous system regulation in under 120 seconds">
-    <meta property="og:image" content="icon-512.png">
-    <meta property="og:url" content="https://yourdomain.com">
     
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Emergency Reset Button -->
+    <div id="emergency-reset" class="emergency-reset" style="display: none;">
+        <button id="btn-emergency" class="btn-emergency" title="Emergency Reset">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="9.5"/>
+                <line x1="12" y1="7" x2="12" y2="17"/>
+                <line x1="7" y1="12" x2="17" y2="12"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+            </svg>
+        </button>
+    </div>
+
     <!-- App Container -->
     <div id="app">
-        <!-- Screen 1: Entry -->
+        <!-- Screen 1: Entry with LIMEN Glow -->
         <div id="screen-entry" class="screen active">
             <div class="content">
-                <h1>Pause.</h1>
+                <!-- LIMEN with Glow -->
+                <div class="limen-glow-container">
+                    <div class="limen-glow" id="limen-glow"></div>
+                    <h1 class="limen-title">LIMEN</h1>
+                </div>
+                
                 <button id="btn-continue" class="btn-primary">Continue</button>
             </div>
-            <div class="brand">LIMEN</div>
+            <div class="brand">where your nervous system meets intelligence</div>
         </div>
 
         <!-- Screen 2: State Selection -->
@@ -102,33 +112,29 @@
             <div class="brand">LIMEN</div>
         </div>
 
-        <!-- Screen 5: Weekly Summary with Psychological Insights -->
+        <!-- Screen 5: Neuropsychological Summary -->
         <div id="screen-summary" class="screen">
             <div class="content">
-                <h2>Neuropsychological Summary</h2>
+                <h2>Your Regulation Patterns</h2>
                 <div class="summary-container">
                     <div class="summary-stats">
                         <div class="stat">
                             <div class="stat-value" id="total-sessions">0</div>
-                            <div class="stat-label">Regulations</div>
+                            <div class="stat-label">Sessions</div>
                         </div>
                         <div class="stat">
                             <div class="stat-value" id="effectiveness-rate">0%</div>
                             <div class="stat-label">Effectiveness</div>
                         </div>
-                        <div class="stat">
-                            <div class="stat-value" id="current-streak">0</div>
-                            <div class="stat-label">Current Streak</div>
-                        </div>
                     </div>
                     
                     <div class="pattern-insight">
-                        <h3>Your Pattern</h3>
-                        <p id="pattern-insight">Complete your first session to see pattern insights.</p>
+                        <h3>Pattern Insight</h3>
+                        <p id="pattern-insight">Complete your first regulation to see insights.</p>
                     </div>
                     
                     <div class="state-distribution">
-                        <h3>State Frequency</h3>
+                        <h3>State Distribution</h3>
                         <div id="state-chart" class="state-chart">
                             <!-- Chart will be generated here -->
                         </div>
@@ -145,19 +151,6 @@
         </div>
     </div>
 
-    <!-- Emergency Reset Button with NEW ICON -->
-    <div id="emergency-reset" class="emergency-reset" style="display: none;">
-        <button id="btn-emergency" class="btn-emergency" title="Emergency Reset">
-            <!-- NEW: Red cross in circle emergency icon -->
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <circle cx="12" cy="12" r="9.5"/>
-                <line x1="12" y1="7" x2="12" y2="17"/>
-                <line x1="7" y1="12" x2="17" y2="12"/>
-                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-            </svg>
-        </button>
-    </div>
-
     <!-- JavaScript -->
     <script src="stateEngine.js"></script>
     <script src="interventions.js"></script>
@@ -170,19 +163,10 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('Service Worker registered:', reg))
+                    .then(reg => console.log('Service Worker registered'))
                     .catch(err => console.log('Service Worker registration failed:', err));
             });
         }
-        
-        // Add shortcut to weekly summary (for testing)
-        window.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-                if (window.app) {
-                    window.app.showNeuropsychologicalSummary();
-                }
-            }
-        });
     </script>
 </body>
 </html>
