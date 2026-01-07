@@ -10,38 +10,30 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
     
-    <!-- Apple Touch Icons (iOS) -->
+    <!-- Apple Touch Icons -->
     <link rel="apple-touch-icon" href="icon-192.png">
     <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
     <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
     
-    <!-- Favicon for all browsers -->
+    <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="32x32" href="icon-192.png">
     <link rel="icon" type="image/png" sizes="16x16" href="icon-192.png">
     <link rel="shortcut icon" href="icon-192.png">
     
-    <!-- PWA Splash Screens (iOS) -->
+    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="LIMEN">
     
-    <!-- Android -->
+    <!-- Android PWA -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="application-name" content="LIMEN">
     
-    <!-- Windows -->
-    <meta name="msapplication-TileColor" content="#1c1c23">
-    <meta name="msapplication-TileImage" content="icon-192.png">
-    <meta name="msapplication-config" content="browserconfig.xml">
-    
-    <!-- Open Graph / Social Sharing -->
-    <meta property="og:title" content="LIMEN">
-    <meta property="og:description" content="Nervous system regulation in under 120 seconds">
-    <meta property="og:image" content="icon-512.png">
-    <meta property="og:url" content="https://yourdomain.com">
-    
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- LZString for compression (for future sync features) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 </head>
 <body>
     <!-- App Container -->
@@ -77,9 +69,10 @@
                 <h2 id="intervention-title">Do this now.</h2>
                 <p id="intervention-text" class="intervention-text"></p>
                 
-                <!-- Timer Container with Glow -->
+                <!-- Timer Container with Glow and Pulse -->
                 <div class="timer-container">
                     <div class="timer-glow" id="timer-glow"></div>
+                    <div class="timer-pulse" id="timer-pulse"></div>
                     <svg class="timer-svg" viewBox="0 0 100 100">
                         <circle class="timer-background" cx="50" cy="50" r="45"></circle>
                         <circle class="timer-fill" cx="50" cy="50" r="45"></circle>
@@ -133,7 +126,7 @@
                     
                     <div class="insights">
                         <h3>Insight</h3>
-                        <p id="weekly-insight">Loading your patterns...</p>
+                        <p id="weekly-insight">Complete your first session to see insights.</p>
                     </div>
                 </div>
                 <button id="btn-back-to-entry" class="btn-primary">Return</button>
@@ -142,31 +135,38 @@
         </div>
     </div>
 
-    <!-- JavaScript -->
+    <!-- Emergency Reset Button (floating) -->
+    <div id="emergency-reset" class="emergency-reset" style="display: none;">
+        <button id="btn-emergency" class="btn-emergency" title="Emergency Reset">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4l3 3"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- JavaScript Files -->
     <script src="stateEngine.js"></script>
     <script src="interventions.js"></script>
     <script src="storage.js"></script>
     <script src="push.js"></script>
+    <script src="audio.js"></script>
+    <script src="environment.js"></script>
     <script src="app.js"></script>
     
-    <!-- Register Service Worker -->
+    <!-- Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
+            window.addEventListener('load', function() {
                 navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('Service Worker registered:', reg))
-                    .catch(err => console.log('Service Worker registration failed:', err));
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
             });
         }
-        
-        // Add shortcut to weekly summary (for testing)
-        window.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-                if (window.app) {
-                    window.app.showWeeklySummary();
-                }
-            }
-        });
     </script>
 </body>
 </html>
