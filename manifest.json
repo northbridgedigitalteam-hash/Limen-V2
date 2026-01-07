@@ -27,8 +27,7 @@
             "name": "Quick Regulation",
             "short_name": "Regulate",
             "description": "Start a 2-minute regulation session",
-            "url": "/?quick=true",
-            "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+            "url": "/?quick=true"
         }
     ]
 }
