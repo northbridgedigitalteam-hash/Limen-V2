@@ -119,10 +119,10 @@ const STATE_ENGINE = {
             { id: "RecoveryDebt", label: "Drained" },
             { id: "AnticipatoryStress", label: "On edge" }
         ];
+    },
+
+    // Helper: Check if we should show state selection
+    shouldShowStateSelection(confidence, lastUserSelectionHours = 24) {
+        return confidence < 0.7 || lastUserSelectionHours > 24;
     }
 };
-
-// Export for use in other files
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = STATE_ENGINE;
-}
