@@ -1,7 +1,7 @@
 const INTERVENTIONS = {
     "CognitiveOverdrive": {
         title: "Overloaded",
-        text: "Let your eyes soften. Notice the edges of the room without focusing. Breathe in through your nose, out slowly for 60 seconds.",
+        text: "Let your eyes soften. Notice the edges of the room without focusing. Breathe in through your nose, out slowly for 90 seconds.",
         duration: 90,
         alternative: "Place hands on opposite shoulders. Apply gentle pressure. Alternate sides with each exhale for 60 seconds.",
         color: "#6bc5a6",
@@ -9,7 +9,7 @@ const INTERVENTIONS = {
     },
     "EmotionalLoad": {
         title: "Emotional Load",
-        text: "Apply alternating pressure to hands or thighs for 60 seconds. Left, then right, matching your breath.",
+        text: "Apply alternating pressure to hands or thighs for 90 seconds. Left, then right, matching your breath.",
         duration: 90,
         alternative: "Hum quietly on your exhale for 60 seconds. Let the vibration settle in your chest.",
         color: "#ff6b9d",
@@ -17,7 +17,7 @@ const INTERVENTIONS = {
     },
     "SomaticTension": {
         title: "Tense",
-        text: "Drop your tongue from the roof of your mouth. Roll shoulders back gently. Breathe slowly for 60 seconds.",
+        text: "Drop your tongue from the roof of your mouth. Roll shoulders back gently. Breathe slowly for 90 seconds.",
         duration: 90,
         alternative: "Press palms together firmly for 5 seconds, release completely. Repeat 3 times.",
         color: "#4dabf7",
@@ -49,7 +49,7 @@ const INTERVENTIONS = {
     },
     "FragmentedFocus": {
         title: "Fragmented",
-        text: "Close your eyes. Block sound with your hands. Count 60 seconds of breathing.",
+        text: "Close your eyes. Block sound with your hands. Count 90 seconds of breathing.",
         duration: 90,
         alternative: "Focus on a single point in the room. Soften your gaze for 60 seconds.",
         color: "#ffd43b",
@@ -59,13 +59,13 @@ const INTERVENTIONS = {
         title: "Drained",
         text: "Sit or lie down. Close your eyes. Breathe without any task for 90 seconds.",
         duration: 90,
-        alternative: "Place hands over your eyes. Breathe into the darkness for 60 seconds.",
+        alternative: "Place hands over your eyes. Breathe into the darkness for 90 seconds.",
         color: "#3dc9c0",
         audio: "brownNoise"
     },
     "AnticipatoryStress": {
         title: "Anticipatory",
-        text: "Name only the next 10 minutes. Ignore everything else. Breathe 3 slow breaths.",
+        text: "Focus only on the next 10 minutes. Ignore everything else. Breathe 3 slow breaths.",
         duration: 60,
         alternative: "Write one sentence about what you're carrying. Then close the note.",
         color: "#ff8787",
