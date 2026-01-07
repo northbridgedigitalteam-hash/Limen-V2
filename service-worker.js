@@ -1,5 +1,5 @@
 // Service Worker for PWA functionality
-const CACHE_NAME = 'limen-v1.0.0';
+const CACHE_NAME = 'limen-v1.0.1';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -9,15 +9,24 @@ const ASSETS_TO_CACHE = [
     '/interventions.js',
     '/storage.js',
     '/push.js',
-    '/manifest.json'
+    '/manifest.json',
+    '/browserconfig.xml',
+    '/icon-192.png',
+    '/icon-512.png'
 ];
 
 // Install event - cache assets
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(ASSETS_TO_CACHE))
-            .then(() => self.skipWaiting())
+            .then(cache => {
+                console.log('Caching app assets');
+                return cache.addAll(ASSETS_TO_CACHE);
+            })
+            .then(() => {
+                console.log('All assets cached');
+                return self.skipWaiting();
+            })
     );
 });
 
@@ -28,73 +37,145 @@ self.addEventListener('activate', event => {
             return Promise.all(
                 cacheNames.map(cacheName => {
                     if (cacheName !== CACHE_NAME) {
+                        console.log('Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
-        }).then(() => self.clients.claim())
+        }).then(() => {
+            console.log('Service Worker activated');
+            return self.clients.claim();
+        })
     );
 });
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', event => {
+    // Skip non-GET requests
+    if (event.request.method !== 'GET') return;
+    
+    // Skip chrome-extension requests
+    if (event.request.url.startsWith('chrome-extension://')) return;
+    
     event.respondWith(
         caches.match(event.request)
-            .then(response => {
-                if (response) {
-                    return response;
+            .then(cachedResponse => {
+                if (cachedResponse) {
+                    console.log('Serving from cache:', event.request.url);
+                    return cachedResponse;
                 }
-                return fetch(event.request);
+                
+                console.log('Fetching from network:', event.request.url);
+                return fetch(event.request)
+                    .then(response => {
+                        // Don't cache if not a success response
+                        if (!response || response.status !== 200 || response.type !== 'basic') {
+                            return response;
+                        }
+                        
+                        // Clone the response
+                        const responseToCache = response.clone();
+                        
+                        caches.open(CACHE_NAME)
+                            .then(cache => {
+                                cache.put(event.request, responseToCache);
+                            });
+                        
+                        return response;
+                    })
+                    .catch(error => {
+                        console.log('Fetch failed:', error);
+                        // Return offline page or fallback
+                        if (event.request.url.endsWith('.html') || 
+                            event.request.url.endsWith('/')) {
+                            return caches.match('/index.html');
+                        }
+                        return new Response('Network error', {
+                            status: 408,
+                            headers: { 'Content-Type': 'text/plain' }
+                        });
+                    });
             })
     );
 });
 
 // Push event - handle push notifications
 self.addEventListener('push', event => {
-    let data = {};
+    console.log('Push event received:', event);
+    
+    let data = {
+        title: 'LIMEN',
+        body: 'Time to regulate.',
+        icon: 'icon-192.png',
+        badge: 'icon-192.png'
+    };
     
     if (event.data) {
         try {
-            data = event.data.json();
+            const eventData = event.data.json();
+            data = { ...data, ...eventData };
         } catch (e) {
-            data = {
-                title: 'LIMEN',
-                body: 'Time to regulate.'
-            };
+            // If data is text, use it as body
+            data.body = event.data.text() || data.body;
         }
     }
     
     const options = {
-        body: data.body || 'Pause for 60 seconds.',
-        icon: '/icon-192.png',
-        badge: '/icon-72.png',
+        body: data.body,
+        icon: data.icon || 'icon-192.png',
+        badge: data.badge || 'icon-192.png',
         vibrate: [100, 50, 100],
         data: {
-            url: '/'
-        }
+            url: data.url || '/',
+            timestamp: Date.now()
+        },
+        tag: 'limen-notification',
+        renotify: false,
+        requireInteraction: false,
+        silent: true
     };
     
     event.waitUntil(
-        self.registration.showNotification(data.title || 'LIMEN', options)
+        self.registration.showNotification(data.title, options)
     );
 });
 
 // Notification click event
 self.addEventListener('notificationclick', event => {
+    console.log('Notification clicked:', event.notification.tag);
     event.notification.close();
     
+    const urlToOpen = event.notification.data.url || '/';
+    
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true })
-            .then(clientList => {
-                // Focus existing window or open new one
-                for (const client of clientList) {
-                    if (client.url === '/' && 'focus' in client) {
-                        return client.focus();
-                    }
+        clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        }).then(clientList => {
+            // Check if there's already a window open
+            for (const client of clientList) {
+                if (client.url === urlToOpen && 'focus' in client) {
+                    return client.focus();
                 }
-                if (clients.openWindow) {
-                    return clients.openWindow('/');
-                }
-            })
+            }
+            
+            // If no window is open, open a new one
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
+        })
     );
 });
+
+// Background sync example (future feature)
+self.addEventListener('sync', event => {
+    if (event.tag === 'sync-sessions') {
+        console.log('Background sync triggered');
+        event.waitUntil(syncSessions());
+    }
+});
+
+async function syncSessions() {
+    // Future: Sync session data with server
+    console.log('Syncing sessions...');
+}
