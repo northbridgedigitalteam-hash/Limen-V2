@@ -337,4 +337,196 @@ class LimenApp {
     }
 
     loadStateDistribution() {
-        const history = STORAGE.getSessionHistory
+        const history = STORAGE.getSessionHistory(7);
+        if (history.length === 0) return;
+        
+        // Count states
+        const stateCounts = {};
+        history.forEach(session => {
+            if (session.state) {
+                stateCounts[session.state] = (stateCounts[session.state] || 0) + 1;
+            }
+        });
+        
+        // Find max for percentage calculation
+        const maxCount = Math.max(...Object.values(stateCounts));
+        
+        // Create chart
+        const chartContainer = document.getElementById('state-chart');
+        chartContainer.innerHTML = '';
+        
+        // Sort states by frequency
+        const sortedStates = Object.entries(stateCounts)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 6); // Show top 6
+        
+        sortedStates.forEach(([stateId, count]) => {
+            const percentage = Math.round((count / history.length) * 100);
+            const displayName = getStateDisplayName(stateId);
+            const color = getStateColor(stateId);
+            
+            const barElement = document.createElement('div');
+            barElement.className = 'chart-bar';
+            
+            barElement.innerHTML = `
+                <span class="chart-label">${displayName}</span>
+                <div class="chart-bar-container">
+                    <div class="chart-bar-fill" style="width: ${percentage}%; background-color: ${color};"></div>
+                </div>
+                <span style="min-width: 40px; text-align: right; color: ${color}; font-weight: 500;">${percentage}%</span>
+            `;
+            
+            chartContainer.appendChild(barElement);
+        });
+    }
+
+    loadWeeklyInsight() {
+        const history = STORAGE.getSessionHistory(7);
+        if (history.length === 0) {
+            document.getElementById('weekly-insight').textContent = 'Complete your first session to see insights.';
+            return;
+        }
+        
+        // Calculate insights
+        const feedbacks = history.map(s => s.feedback).filter(Boolean);
+        const states = history.map(s => s.state).filter(Boolean);
+        
+        const yesCount = feedbacks.filter(f => f === 'yes').length;
+        const yesPercentage = Math.round((yesCount / feedbacks.length) * 100);
+        
+        // Find most common state
+        const stateFrequency = {};
+        states.forEach(state => {
+            stateFrequency[state] = (stateFrequency[state] || 0) + 1;
+        });
+        
+        const mostCommonState = Object.entries(stateFrequency)
+            .sort(([,a], [,b]) => b - a)[0];
+        
+        // Generate insight
+        let insight = '';
+        
+        if (yesPercentage >= 80) {
+            insight = 'You\'re effectively returning to baseline this week. Your regulation is strong.';
+        } else if (yesPercentage >= 60) {
+            insight = 'You\'re making good progress returning to baseline. Consistency is key.';
+        } else {
+            insight = 'Focus on completing interventions fully to improve your return to baseline.';
+        }
+        
+        if (mostCommonState) {
+            const stateName = getStateDisplayName(mostCommonState[0]);
+            insight += ` Your most frequent state was ${stateName}.`;
+        }
+        
+        document.getElementById('weekly-insight').textContent = insight;
+    }
+
+    shouldShowWeeklySummary() {
+        const data = STORAGE.getData();
+        if (!data || !data.userProfile) return false;
+        
+        const lastSummaryShown = data.userProfile.lastSummaryShown;
+        if (!lastSummaryShown) return true;
+        
+        const lastDate = new Date(lastSummaryShown);
+        const today = new Date();
+        
+        // Show summary once per week
+        const daysSinceLastSummary = (today - lastDate) / (1000 * 60 * 60 * 24);
+        return daysSinceLastSummary >= 7;
+    }
+
+    checkWeeklySummaryPrompt() {
+        // Check on Mondays if we should prompt for weekly summary
+        const today = new Date();
+        if (today.getDay() === 1) { // Monday
+            const data = STORAGE.getData();
+            const lastMondayPrompt = data.userProfile.lastMondayPrompt;
+            
+            if (!lastMondayPrompt || 
+                new Date(lastMondayPrompt).toDateString() !== today.toDateString()) {
+                
+                // Could show a subtle prompt here
+                console.log('Monday - consider showing weekly summary prompt');
+                STORAGE.updateProfile('lastMondayPrompt', today.toISOString());
+            }
+        }
+    }
+
+    showWeeklySummary() {
+        this.showScreen('summary');
+        
+        // Record that summary was shown
+        STORAGE.updateProfile('lastSummaryShown', new Date().toISOString());
+    }
+
+    resetSession() {
+        this.currentState = null;
+        this.currentIntervention = null;
+        this.currentSessionId = null;
+        this.feedbackGiven = false;
+        this.timeRemaining = 0;
+        this.timerTotal = 0;
+        
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        if (this.glowElement) {
+            this.glowElement.classList.remove('amber');
+        }
+    }
+
+    cleanup() {
+        console.log('Cleaning up app...');
+        
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+        }
+        
+        if (window.pushManager) {
+            window.pushManager.stop();
+        }
+    }
+}
+
+// Initialize app when DOM is loaded
+let app = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        app = new LimenApp();
+        window.app = app;
+        
+        // Add debug shortcuts
+        window.addEventListener('keydown', (e) => {
+            // Ctrl+Shift+S for summary
+            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                e.preventDefault();
+                app.showWeeklySummary();
+            }
+            // Ctrl+Shift+R to reset storage
+            if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+                e.preventDefault();
+                if (confirm('Reset all app data?')) {
+                    STORAGE.clearData();
+                    location.reload();
+                }
+            }
+        });
+        
+        console.log('LIMEN App initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize LIMEN App:', error);
+    }
+});
+
+// Handle service worker updates
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('Service Worker updated, reloading...');
+        window.location.reload();
+    });
+}
