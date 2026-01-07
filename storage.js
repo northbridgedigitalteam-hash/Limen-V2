@@ -198,4 +198,56 @@ const STORAGE = {
 
     // Record state selection
     recordStateSelection() {
-        return this.updateProfile('
+        return this.updateProfile('lastStateSelection', new Date().toISOString());
+    },
+
+    // Clear all data
+    clearData() {
+        try {
+            localStorage.removeItem(this.KEY);
+            this.init();
+            return true;
+        } catch (error) {
+            console.error('Error clearing storage:', error);
+            return false;
+        }
+    },
+
+    // Export data as JSON
+    exportData() {
+        return JSON.stringify(this.getData(), null, 2);
+    },
+
+    // Import data from JSON
+    importData(jsonString) {
+        try {
+            const importedData = JSON.parse(jsonString);
+            const currentData = this.getData();
+            
+            // Merge data carefully
+            const mergedData = {
+                ...currentData,
+                ...importedData,
+                version: this.VERSION,
+                sessionHistory: [...(currentData?.sessionHistory || []), ...(importedData.sessionHistory || [])],
+                userProfile: {
+                    ...currentData?.userProfile,
+                    ...importedData.userProfile
+                },
+                settings: {
+                    ...currentData?.settings,
+                    ...importedData.settings
+                }
+            };
+            
+            this.setData(mergedData);
+            return true;
+        } catch (error) {
+            console.error('Error importing data:', error);
+            return false;
+        }
+    }
+};
+
+// Initialize storage on load
+STORAGE.init();
