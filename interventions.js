@@ -3,13 +3,13 @@ const INTERVENTIONS = {
         title: "Overloaded",
         text: "Let your eyes soften. Notice the edges of the room without focusing. Breathe in through your nose, out slowly for 90 seconds.",
         duration: 90,
-        alternative: "Place hands on opposite shoulders. Apply gentle pressure. Alternate sides with each exhale for 90 seconds."
+        alternative: "Place hands on opposite shoulders. Apply gentle pressure. Alternate sides with each exhale for 60 seconds."
     },
     "EmotionalLoad": {
         title: "Emotional Load",
         text: "Apply alternating pressure to hands or thighs for 90 seconds. Left, then right, matching your breath.",
         duration: 90,
-        alternative: "Hum quietly on your exhale for 90 seconds. Let the vibration settle in your chest."
+        alternative: "Hum quietly on your exhale for 60 seconds. Let the vibration settle in your chest."
     },
     "SomaticTension": {
         title: "Tense",
@@ -21,7 +21,7 @@ const INTERVENTIONS = {
         title: "On Edge",
         text: "Widen your gaze. Identify 5 objects in your periphery. Breathe slowly through your nose.",
         duration: 90,
-        alternative: "Place one hand on your sternum. Breathe into that space for 90 seconds."
+        alternative: "Place one hand on your sternum. Breathe into that space for 60 seconds."
     },
     "DecisionFatigue": {
         title: "Decision Fatigue",
@@ -39,17 +39,17 @@ const INTERVENTIONS = {
         title: "Fragmented",
         text: "Close your eyes. Block sound with your hands. Count 90 seconds of breathing.",
         duration: 90,
-        alternative: "Focus on a single point in the room. Soften your gaze for 90 seconds."
+        alternative: "Focus on a single point in the room. Soften your gaze for 60 seconds."
     },
     "RecoveryDebt": {
         title: "Drained",
         text: "Sit or lie down. Close your eyes. Breathe without any task for 90 seconds.",
         duration: 90,
-        alternative: "Place hands over your eyes. Breathe into the darkness for 90 seconds."
+        alternative: "Place hands over your eyes. Breathe into the darkness for 60 seconds."
     },
     "AnticipatoryStress": {
         title: "Anticipatory",
-        text: "Name only the next 10 minutes. Ignore everything else. Breathe 3 slow breaths.",
+        text: "Focus only on the next 10 minutes. Ignore everything else. Breathe 3 slow breaths.",
         duration: 60,
         alternative: "Write one sentence about what you're carrying. Then close the note."
     },
@@ -57,7 +57,7 @@ const INTERVENTIONS = {
         title: "Social Depletion",
         text: "Reduce input. Turn away from screens. Be still for 90 seconds.",
         duration: 90,
-        alternative: "Put on noise-canceling or earplugs. Breathe for 90 seconds."
+        alternative: "Put on noise-canceling or earplugs. Breathe for 60 seconds."
     },
     "ShutdownDrift": {
         title: "Drifting",
@@ -72,19 +72,34 @@ const INTERVENTIONS = {
     }
 };
 
+// Get intervention for a state
 function getIntervention(state) {
     return INTERVENTIONS[state] || INTERVENTIONS["CognitiveOverdrive"];
 }
 
+// Get alternative intervention for a state
 function getAlternativeIntervention(state) {
     const intervention = INTERVENTIONS[state];
-    return intervention.alternative ? {
-        ...intervention,
-        text: intervention.alternative
-    } : intervention;
+    if (intervention && intervention.alternative) {
+        return {
+            ...intervention,
+            text: intervention.alternative
+        };
+    }
+    return intervention || INTERVENTIONS["CognitiveOverdrive"];
 }
 
-// Export for use in other files
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { INTERVENTIONS, getIntervention, getAlternativeIntervention };
+// Get all available states
+function getAllStates() {
+    return Object.keys(INTERVENTIONS);
+}
+
+// Get display states (simplified for UI)
+function getDisplayStates() {
+    return [
+        { id: "CognitiveOverdrive", label: "Overloaded" },
+        { id: "SomaticTension", label: "Tense" },
+        { id: "RecoveryDebt", label: "Drained" },
+        { id: "AnticipatoryStress", label: "On edge" }
+    ];
 }
