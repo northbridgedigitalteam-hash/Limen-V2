@@ -10,6 +10,8 @@ class LimenApp {
         this.feedbackGiven = false;
         this.currentSessionId = null;
         this.glowElement = null;
+        this.pulseElement = null;
+        this.pulseInterval = null;
         
         this.init();
     }
@@ -17,15 +19,45 @@ class LimenApp {
     init() {
         console.log('LIMEN App initializing...');
         
+        // Apply saved preferences
+        this.applyPreferences();
+        
         // Bind all events
         this.bindEvents();
         
-        // Don't auto-navigate - wait for user to click Continue
         // Show entry screen only
         this.showScreen('entry');
         
         // Check if we should show weekly summary (e.g., on Mondays)
         this.checkWeeklySummaryPrompt();
+        
+        // Setup emergency reset
+        this.setupEmergencyReset();
+        
+        // Check for Zen mode
+        this.checkZenMode();
+    }
+
+    applyPreferences() {
+        const data = STORAGE.getData();
+        if (!data || !data.userProfile || !data.userProfile.preferences) return;
+        
+        const prefs = data.userProfile.preferences;
+        
+        // Apply Zen mode
+        if (prefs.zenMode) {
+            document.body.classList.add('zen-mode');
+        }
+        
+        // Apply haptic feedback setting
+        if (prefs.hapticFeedback === false) {
+            // Will be checked before triggering vibrations
+        }
+        
+        // Apply ambient audio setting
+        if (prefs.ambientAudio && window.audioManager) {
+            window.audioManager.toggle(true);
+        }
     }
 
     bindEvents() {
@@ -56,30 +88,96 @@ class LimenApp {
         });
     }
 
+    setupEmergencyReset() {
+        const emergencyBtn = document.getElementById('btn-emergency');
+        if (emergencyBtn) {
+            emergencyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.triggerEmergencyReset();
+            });
+            
+            // Check if we should show emergency button
+            this.checkEmergencyButtonVisibility();
+        }
+    }
+
+    checkEmergencyButtonVisibility() {
+        const history = STORAGE.getSessionHistory(1);
+        const recentNegativeFeedback = history.filter(s => s.feedback === 'no').length;
+        const shouldShow = recentNegativeFeedback >= 2 || 
+                          (history.length >= 5 && recentNegativeFeedback >= 1);
+        
+        const emergencyReset = document.getElementById('emergency-reset');
+        if (emergencyReset) {
+            emergencyReset.style.display = shouldShow ? 'block' : 'none';
+        }
+    }
+
     showScreen(screenName) {
         console.log('Showing screen:', screenName);
         
-        // Hide all screens
-        document.querySelectorAll('.screen').forEach(screen => {
-            screen.classList.remove('active');
-        });
+        // Animate current screen out
+        const currentScreen = document.querySelector('.screen.active');
+        if (currentScreen) {
+            currentScreen.classList.remove('active');
+            currentScreen.classList.add('fade-out');
+            
+            setTimeout(() => {
+                currentScreen.classList.remove('fade-out');
+            }, 300);
+        }
         
-        // Show target screen
+        // Stop pulse animation when leaving intervention screen
+        if (screenName !== 'intervention' && this.pulseInterval) {
+            clearInterval(this.pulseInterval);
+            this.pulseInterval = null;
+            if (this.pulseElement) {
+                this.pulseElement.classList.remove('active');
+            }
+        }
+        
+        // Show target screen with animation
         const targetScreen = document.getElementById(`screen-${screenName}`);
         if (targetScreen) {
-            targetScreen.classList.add('active');
+            targetScreen.classList.add('fade-in');
+            
+            setTimeout(() => {
+                targetScreen.classList.add('active');
+                targetScreen.classList.remove('fade-in');
+            }, 50);
+            
             this.currentScreen = screenName;
             
             // Screen-specific initialization
             switch(screenName) {
                 case 'intervention':
                     this.startTimer();
+                    this.startPulseAnimation();
                     break;
                 case 'summary':
                     this.loadWeeklySummary();
                     break;
+                case 'state':
+                    this.prepareStateScreen();
+                    break;
+                case 'entry':
+                    this.resetSession();
+                    break;
             }
         }
+    }
+
+    prepareStateScreen() {
+        // Add subtle micro-interactions to state buttons
+        document.querySelectorAll('.btn-state').forEach(btn => {
+            btn.addEventListener('mouseenter', () => {
+                btn.style.transform = 'translateY(-2px)';
+            });
+            
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = 'translateY(0)';
+            });
+        });
     }
 
     selectState(state) {
@@ -124,10 +222,45 @@ class LimenApp {
             timerFill.style.strokeDashoffset = circumference;
         }
         
-        // Get glow element
+        // Get glow and pulse elements
         this.glowElement = document.getElementById('timer-glow');
+        this.pulseElement = document.getElementById('timer-pulse');
+        
         if (this.glowElement) {
             this.glowElement.classList.remove('amber');
+        }
+        
+        if (this.pulseElement) {
+            this.pulseElement.classList.remove('active');
+        }
+        
+        // Add haptic feedback based on state
+        if (navigator.vibrate) {
+            const data = STORAGE.getData();
+            const hapticEnabled = data?.userProfile?.preferences?.hapticFeedback ?? true;
+            
+            if (hapticEnabled) {
+                const patterns = {
+                    'CognitiveOverdrive': [100, 50, 100],
+                    'SomaticTension': [50, 100, 50],
+                    'RecoveryDebt': [200],
+                    'Hypervigilance': [30, 30, 30, 100],
+                    'EmergencyReset': [150, 50, 150, 50, 150]
+                };
+                
+                if (patterns[state]) {
+                    navigator.vibrate(patterns[state]);
+                }
+            }
+        }
+        
+        // Play ambient audio if enabled
+        if (window.audioManager && this.currentIntervention.audio) {
+            if (this.currentIntervention.audio === 'brownNoise') {
+                window.audioManager.playBrownNoise(this.currentIntervention.duration);
+            } else if (this.currentIntervention.audio === 'focusTone') {
+                window.audioManager.playFocusTone(this.currentIntervention.duration);
+            }
         }
         
         this.showScreen('intervention');
@@ -159,6 +292,11 @@ class LimenApp {
             // Change glow color when 5 seconds remain
             if (this.timeRemaining <= 5 && this.glowElement) {
                 this.glowElement.classList.add('amber');
+                
+                // Intensify pulse animation for last 5 seconds
+                if (this.pulseElement) {
+                    this.pulseElement.style.animation = 'pulseStrong 0.5s infinite';
+                }
             }
             
             if (this.timeRemaining <= 0) {
@@ -168,8 +306,49 @@ class LimenApp {
         }, 1000);
     }
 
+    startPulseAnimation() {
+        if (this.pulseInterval) {
+            clearInterval(this.pulseInterval);
+        }
+        
+        this.pulseElement = document.getElementById('timer-pulse');
+        if (this.pulseElement) {
+            this.pulseElement.classList.add('active');
+            
+            // Randomize pulse timing slightly for organic feel
+            this.pulseInterval = setInterval(() => {
+                const randomDelay = Math.random() * 500 + 1500; // 1.5-2 seconds
+                setTimeout(() => {
+                    if (this.pulseElement && this.currentScreen === 'intervention') {
+                        this.pulseElement.style.animation = 'none';
+                        setTimeout(() => {
+                            if (this.pulseElement) {
+                                this.pulseElement.style.animation = 'pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1)';
+                            }
+                        }, 10);
+                    }
+                }, randomDelay);
+            }, 3000);
+        }
+    }
+
     timerComplete() {
         console.log('Timer completed for state:', this.currentState);
+        
+        // Stop pulse animation
+        if (this.pulseInterval) {
+            clearInterval(this.pulseInterval);
+            this.pulseInterval = null;
+        }
+        
+        if (this.pulseElement) {
+            this.pulseElement.classList.remove('active');
+        }
+        
+        // Stop audio
+        if (window.audioManager) {
+            window.audioManager.stopAll();
+        }
         
         // Save session before feedback
         this.saveSession();
@@ -211,13 +390,18 @@ class LimenApp {
         
         // Update session with feedback
         this.updateSessionFeedback(feedback);
+        
+        // Update emergency button visibility
+        setTimeout(() => {
+            this.checkEmergencyButtonVisibility();
+        }, 1000);
     }
 
     handlePositiveFeedback() {
         setTimeout(() => {
             // Check if we should show weekly summary (once per week)
             if (this.shouldShowWeeklySummary()) {
-                this.showScreen('summary');
+                this.showWeeklySummary();
             } else {
                 // Return to entry screen
                 this.showScreen('entry');
@@ -245,13 +429,18 @@ class LimenApp {
                 timerText.textContent = this.timeRemaining;
             }
             
-            // Reset glow
+            // Reset glow and pulse
             if (this.glowElement) {
                 this.glowElement.classList.remove('amber');
             }
             
+            if (this.pulseElement) {
+                this.pulseElement.style.animation = 'pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1)';
+            }
+            
             this.showScreen('intervention');
             this.startTimer();
+            this.startPulseAnimation();
             this.feedbackGiven = false;
         }, 1500);
     }
@@ -283,6 +472,56 @@ class LimenApp {
         };
         
         return fallbacks[this.currentState] || 'Baseline';
+    }
+
+    triggerEmergencyReset() {
+        // Immediate intervention for acute dysregulation
+        const emergencyIntervention = {
+            title: "Emergency Reset",
+            text: "Place both feet flat on the ground. Press palms together firmly. Breathe: 4 seconds in, 7 seconds hold, 8 seconds out. Repeat 3 times.",
+            duration: 90,
+            audio: "brownNoise"
+        };
+        
+        this.currentIntervention = emergencyIntervention;
+        this.currentState = "EmergencyReset";
+        
+        // Update UI
+        const interventionText = document.getElementById('intervention-text');
+        if (interventionText) {
+            interventionText.textContent = emergencyIntervention.text;
+        }
+        
+        this.timeRemaining = emergencyIntervention.duration;
+        this.timerTotal = emergencyIntervention.duration;
+        
+        const timerText = document.getElementById('timer-text');
+        if (timerText) {
+            timerText.textContent = this.timeRemaining;
+        }
+        
+        // Strong haptic feedback
+        if (navigator.vibrate) {
+            const data = STORAGE.getData();
+            const hapticEnabled = data?.userProfile?.preferences?.hapticFeedback ?? true;
+            if (hapticEnabled) {
+                navigator.vibrate([150, 50, 150, 50, 150]);
+            }
+        }
+        
+        // Show intervention screen immediately
+        this.showScreen('intervention');
+        
+        // Log emergency session
+        const session = {
+            state: "EmergencyReset",
+            intervention: "Emergency Reset",
+            duration: 90,
+            emergency: true,
+            timestamp: new Date().toISOString()
+        };
+        
+        STORAGE.addSession(session);
     }
 
     saveSession() {
@@ -387,38 +626,8 @@ class LimenApp {
             return;
         }
         
-        // Calculate insights
-        const feedbacks = history.map(s => s.feedback).filter(Boolean);
-        const states = history.map(s => s.state).filter(Boolean);
-        
-        const yesCount = feedbacks.filter(f => f === 'yes').length;
-        const yesPercentage = Math.round((yesCount / feedbacks.length) * 100);
-        
-        // Find most common state
-        const stateFrequency = {};
-        states.forEach(state => {
-            stateFrequency[state] = (stateFrequency[state] || 0) + 1;
-        });
-        
-        const mostCommonState = Object.entries(stateFrequency)
-            .sort(([,a], [,b]) => b - a)[0];
-        
-        // Generate insight
-        let insight = '';
-        
-        if (yesPercentage >= 80) {
-            insight = 'You\'re effectively returning to baseline this week. Your regulation is strong.';
-        } else if (yesPercentage >= 60) {
-            insight = 'You\'re making good progress returning to baseline. Consistency is key.';
-        } else {
-            insight = 'Focus on completing interventions fully to improve your return to baseline.';
-        }
-        
-        if (mostCommonState) {
-            const stateName = getStateDisplayName(mostCommonState[0]);
-            insight += ` Your most frequent state was ${stateName}.`;
-        }
-        
+        // Generate insight using state engine
+        const insight = STATE_ENGINE.generateInsight(history);
         document.getElementById('weekly-insight').textContent = insight;
     }
 
@@ -432,9 +641,22 @@ class LimenApp {
         const lastDate = new Date(lastSummaryShown);
         const today = new Date();
         
-        // Show summary once per week
+        // Show summary once per week or after 5 consecutive successful sessions
         const daysSinceLastSummary = (today - lastDate) / (1000 * 60 * 60 * 24);
-        return daysSinceLastSummary >= 7;
+        
+        // Check for 5 consecutive successful sessions
+        const recentSessions = STORAGE.getSessionHistory(5);
+        const consecutiveSuccess = recentSessions.length >= 5 && 
+                                  recentSessions.every(s => s.feedback === 'yes');
+        
+        return daysSinceLastSummary >= 7 || consecutiveSuccess;
+    }
+
+    showWeeklySummary() {
+        this.showScreen('summary');
+        
+        // Record that summary was shown
+        STORAGE.updateProfile('lastSummaryShown', new Date().toISOString());
     }
 
     checkWeeklySummaryPrompt() {
@@ -447,18 +669,66 @@ class LimenApp {
             if (!lastMondayPrompt || 
                 new Date(lastMondayPrompt).toDateString() !== today.toDateString()) {
                 
-                // Could show a subtle prompt here
-                console.log('Monday - consider showing weekly summary prompt');
+                // Record that we prompted this Monday
                 STORAGE.updateProfile('lastMondayPrompt', today.toISOString());
             }
         }
     }
 
-    showWeeklySummary() {
-        this.showScreen('summary');
+    checkZenMode() {
+        const data = STORAGE.getData();
+        if (data?.userProfile?.preferences?.zenMode) {
+            document.body.classList.add('zen-mode');
+        }
+    }
+
+    toggleZenMode() {
+        const isZen = document.body.classList.toggle('zen-mode');
+        STORAGE.updateSetting('zenMode', isZen);
         
-        // Record that summary was shown
-        STORAGE.updateProfile('lastSummaryShown', new Date().toISOString());
+        this.showToast(isZen ? 'Zen mode enabled' : 'Zen mode disabled');
+        return isZen;
+    }
+
+    toggleAudio() {
+        if (!window.audioManager) return false;
+        const enabled = window.audioManager.toggle(!window.audioManager.isEnabled);
+        this.showToast(enabled ? 'Ambient audio enabled' : 'Ambient audio disabled');
+        return enabled;
+    }
+
+    toggleHaptic() {
+        const data = STORAGE.getData();
+        const current = data?.userProfile?.preferences?.hapticFeedback ?? true;
+        const newValue = !current;
+        STORAGE.updateSetting('hapticFeedback', newValue);
+        this.showToast(newValue ? 'Haptic feedback enabled' : 'Haptic feedback disabled');
+        return newValue;
+    }
+
+    showToast(message, duration = 2000) {
+        // Remove existing toast
+        const existingToast = document.querySelector('.toast-notification');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // Create new toast
+        const toast = document.createElement('div');
+        toast.className = 'toast-notification';
+        toast.textContent = message;
+        
+        document.body.appendChild(toast);
+        
+        // Remove after duration
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease forwards';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, duration);
     }
 
     resetSession() {
@@ -474,8 +744,22 @@ class LimenApp {
             this.timerInterval = null;
         }
         
+        if (this.pulseInterval) {
+            clearInterval(this.pulseInterval);
+            this.pulseInterval = null;
+        }
+        
         if (this.glowElement) {
             this.glowElement.classList.remove('amber');
+        }
+        
+        if (this.pulseElement) {
+            this.pulseElement.classList.remove('active');
+        }
+        
+        // Stop audio
+        if (window.audioManager) {
+            window.audioManager.stopAll();
         }
     }
 
@@ -486,9 +770,33 @@ class LimenApp {
             clearInterval(this.timerInterval);
         }
         
+        if (this.pulseInterval) {
+            clearInterval(this.pulseInterval);
+        }
+        
         if (window.pushManager) {
             window.pushManager.stop();
         }
+        
+        if (window.audioManager) {
+            window.audioManager.stopAll();
+        }
+    }
+
+    // Debug methods
+    showDebugInfo() {
+        const stats = STORAGE.getStats();
+        console.log('=== LIMEN DEBUG INFO ===');
+        console.log('App Stats:', stats);
+        console.log('Current State:', this.currentState);
+        console.log('Current Session ID:', this.currentSessionId);
+        console.log('Screen:', this.currentScreen);
+        console.log('Audio Manager:', window.audioManager ? 'Available' : 'Not available');
+        console.log('Push Manager:', window.pushManager ? 'Available' : 'Not available');
+        console.log('Environment Sensor:', window.environmentSensor ? 'Available' : 'Not available');
+        console.log('========================');
+        
+        this.showToast('Debug info logged to console', 3000);
     }
 }
 
@@ -507,26 +815,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 app.showWeeklySummary();
             }
-            // Ctrl+Shift+R to reset storage
-            if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+            // Ctrl+Shift+D for debug info
+            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
                 e.preventDefault();
-                if (confirm('Reset all app data?')) {
-                    STORAGE.clearData();
-                    location.reload();
-                }
+                app.showDebugInfo();
+            }
+            // Ctrl+Shift+Z for zen mode toggle
+            if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
+                e.preventDefault();
+                app.toggleZenMode();
+            }
+            // Ctrl+Shift+A for audio toggle
+            if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+                e.preventDefault();
+                app.toggleAudio();
+            }
+            // Ctrl+Shift+H for haptic toggle
+            if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+                e.preventDefault();
+                app.toggleHaptic();
             }
         });
         
         console.log('LIMEN App initialized successfully');
+        
+        // Handle service worker updates
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('Service Worker updated, reloading...');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            });
+        }
+        
     } catch (error) {
         console.error('Failed to initialize LIMEN App:', error);
+        // Show error to user
+        alert('Error initializing LIMEN. Please refresh the page.');
     }
 });
 
-// Handle service worker updates
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('Service Worker updated, reloading...');
-        window.location.reload();
-    });
-}
+// Handle page unload
+window.addEventListener('beforeunload', () => {
+    if (app) {
+        app.cleanup();
+    }
+});
