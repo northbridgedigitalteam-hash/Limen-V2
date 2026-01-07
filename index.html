@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>LIMEN</title>
     <meta name="description" content="Nervous system regulation in under 120 seconds">
     <meta name="theme-color" content="#1c1c23">
@@ -33,12 +33,16 @@
     <meta name="msapplication-TileColor" content="#1c1c23">
     <meta name="msapplication-TileImage" content="icon-192.png">
     
+    <!-- Additional Android PWA tags -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    
     <!-- CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <!-- Emergency Reset Button -->
-    <div id="emergency-reset" class="emergency-reset" style="display: none;">
+    <div id="emergency-reset" class="emergency-reset" style="display: block;">
         <button id="btn-emergency" class="btn-emergency" title="Emergency Reset">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <circle cx="12" cy="12" r="9.5"/>
