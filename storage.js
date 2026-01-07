@@ -1,13 +1,13 @@
-// Local Storage Management - ENHANCED
+// Local Storage Management - INTELLIGENT VERSION
 const STORAGE = {
-    KEY: 'limen_v1',
-    VERSION: '1.2.0',
+    KEY: 'limen_intelligent_v2',
+    VERSION: '2.0.0',
     
-    // Initialize storage
+    // Initialize storage with intelligence tracking
     init() {
         let data = this.getData();
         if (!data || data.version !== this.VERSION) {
-            // Initialize with psychological tracking
+            // Initialize with comprehensive intelligence tracking
             data = {
                 version: this.VERSION,
                 sessionHistory: [],
@@ -17,25 +17,54 @@ const STORAGE = {
                     lastStateSelection: null,
                     lastSelectedState: null,
                     lastSummaryShown: null,
+                    totalSessions: 0,
                     totalReturnToBaseline: 0,
+                    totalPartialSuccess: 0,
+                    totalNoSuccess: 0,
                     psychologicalPatterns: [],
                     currentStreak: 0,
                     bestStreak: 0,
                     preferences: {
                         ambientAudio: false
-                    }
+                    },
+                    // Intelligence tracking
+                    learnedEffectiveness: {}, // State -> intervention effectiveness
+                    timePatterns: {},
+                    adaptationLevel: 1, // 1-5 scale, increases with mastery
+                    personalizedTips: [],
+                    interventionHistory: [] // Track which interventions were tried when
                 },
                 appStats: {
                     totalSessions: 0,
                     totalTime: 0,
                     totalReturnToBaseline: 0,
+                    totalPartialSuccess: 0,
+                    totalNoSuccess: 0,
                     firstUse: new Date().toISOString(),
-                    lastUse: null
+                    lastUse: null,
+                    avgEffectiveness: 0,
+                    improvementRate: 0
                 },
                 weeklyStats: {
                     currentWeekStart: this.getWeekStartDate(),
                     sessionsThisWeek: 0,
-                    returnToBaselineThisWeek: 0
+                    returnToBaselineThisWeek: 0,
+                    partialSuccessThisWeek: 0,
+                    noSuccessThisWeek: 0
+                },
+                // Intelligence data
+                intelligence: {
+                    stateEffectiveness: {}, // State -> {intervention: {success: X, total: Y}}
+                    timeEffectiveness: {}, // Hour -> effectiveness
+                    interventionSuccessRates: {},
+                    userPatterns: {
+                        dominantStates: [],
+                        bestTimes: [],
+                        worstTimes: [],
+                        mostEffectiveInterventions: [],
+                        leastEffectiveInterventions: []
+                    },
+                    learningLog: []
                 },
                 patternInsights: []
             };
@@ -66,11 +95,13 @@ const STORAGE = {
         const storedWeekStart = data.weeklyStats.currentWeekStart;
         
         if (storedWeekStart !== currentWeekStart) {
-            // New week, reset weekly stats
+            // New week, reset weekly stats but preserve intelligence
             data.weeklyStats = {
                 currentWeekStart: currentWeekStart,
                 sessionsThisWeek: 0,
-                returnToBaselineThisWeek: 0
+                returnToBaselineThisWeek: 0,
+                partialSuccessThisWeek: 0,
+                noSuccessThisWeek: 0
             };
             this.setData(data);
         }
@@ -98,7 +129,7 @@ const STORAGE = {
         }
     },
 
-    // Add a new session
+    // Add a new session with intelligence tracking
     addSession(session) {
         const data = this.getData();
         if (!data) return null;
@@ -106,42 +137,326 @@ const STORAGE = {
         session.id = Date.now() + Math.random().toString(36).substr(2, 9);
         session.timestamp = new Date().toISOString();
         session.week = this.getWeekStartDate();
+        session.hour = new Date().getHours();
         
         data.sessionHistory.push(session);
         
-        // Update app stats
+        // Update all stats
         data.appStats.totalSessions++;
         data.appStats.totalTime += (session.duration || 0);
         data.appStats.lastUse = session.timestamp;
+        data.userProfile.totalSessions++;
         
         // Update weekly stats
         data.weeklyStats.sessionsThisWeek++;
         
-        // Track return to baseline
-        if (session.returnedToBaseline) {
+        // Track all feedback types for intelligence
+        if (session.feedback === 'yes') {
             data.appStats.totalReturnToBaseline++;
             data.userProfile.totalReturnToBaseline++;
             data.weeklyStats.returnToBaselineThisWeek++;
-            
-            // Update streak
             this.updateStreak(data, true);
-        } else {
-            // Break streak on unsuccessful regulation
+        } else if (session.feedback === 'little') {
+            data.appStats.totalPartialSuccess++;
+            data.userProfile.totalPartialSuccess++;
+            data.weeklyStats.partialSuccessThisWeek++;
+            this.updateStreak(data, false);
+        } else if (session.feedback === 'no') {
+            data.appStats.totalNoSuccess++;
+            data.userProfile.totalNoSuccess++;
+            data.weeklyStats.noSuccessThisWeek++;
             this.updateStreak(data, false);
         }
         
-        // Generate psychological insight if returned to baseline
-        if (session.returnedToBaseline) {
-            this.generatePsychologicalInsight(data, session);
-        }
+        // Update intelligence data for ALL sessions (not just successful ones)
+        this.updateIntelligence(data, session);
         
-        // Keep only last 500 sessions
-        if (data.sessionHistory.length > 500) {
-            data.sessionHistory = data.sessionHistory.slice(-500);
+        // Generate personalized insight
+        this.generatePersonalizedInsight(data, session);
+        
+        // Update adaptation level based on performance
+        this.updateAdaptationLevel(data);
+        
+        // Keep only last 1000 sessions (more data for better intelligence)
+        if (data.sessionHistory.length > 1000) {
+            data.sessionHistory = data.sessionHistory.slice(-1000);
         }
         
         this.setData(data);
         return session;
+    },
+
+    // Update intelligence based on session
+    updateIntelligence(data, session) {
+        if (!session.state || !session.feedback) return;
+        
+        const state = session.state;
+        const hour = session.hour;
+        const feedback = session.feedback;
+        const intervention = session.intervention || 'default';
+        
+        // Initialize state effectiveness tracking
+        if (!data.intelligence.stateEffectiveness[state]) {
+            data.intelligence.stateEffectiveness[state] = {};
+        }
+        
+        if (!data.intelligence.stateEffectiveness[state][intervention]) {
+            data.intelligence.stateEffectiveness[state][intervention] = {
+                success: 0,
+                partial: 0,
+                failure: 0,
+                total: 0,
+                lastAttempt: null
+            };
+        }
+        
+        const stat = data.intelligence.stateEffectiveness[state][intervention];
+        stat.total++;
+        stat.lastAttempt = session.timestamp;
+        
+        // Update based on feedback
+        if (feedback === 'yes') {
+            stat.success++;
+        } else if (feedback === 'little') {
+            stat.partial++;
+        } else if (feedback === 'no') {
+            stat.failure++;
+        }
+        
+        // Track time effectiveness
+        if (!data.intelligence.timeEffectiveness[hour]) {
+            data.intelligence.timeEffectiveness[hour] = {
+                success: 0,
+                partial: 0,
+                failure: 0,
+                total: 0
+            };
+        }
+        
+        const timeStat = data.intelligence.timeEffectiveness[hour];
+        timeStat.total++;
+        if (feedback === 'yes') timeStat.success++;
+        if (feedback === 'little') timeStat.partial++;
+        if (feedback === 'no') timeStat.failure++;
+        
+        // Track intervention in user history
+        data.userProfile.interventionHistory.push({
+            state: state,
+            intervention: intervention,
+            feedback: feedback,
+            timestamp: session.timestamp,
+            hour: hour
+        });
+        
+        // Keep only last 100 intervention history
+        if (data.userProfile.interventionHistory.length > 100) {
+            data.userProfile.interventionHistory = data.userProfile.interventionHistory.slice(-100);
+        }
+        
+        // Add to learning log
+        data.intelligence.learningLog.push({
+            timestamp: session.timestamp,
+            state: state,
+            intervention: intervention,
+            feedback: feedback,
+            effectiveness: this.calculateEffectivenessScore(feedback)
+        });
+        
+        // Keep learning log manageable
+        if (data.intelligence.learningLog.length > 200) {
+            data.intelligence.learningLog = data.intelligence.learningLog.slice(-200);
+        }
+        
+        // Update user patterns
+        this.updateUserPatterns(data);
+    },
+
+    // Calculate effectiveness score (0-100)
+    calculateEffectivenessScore(feedback) {
+        switch(feedback) {
+            case 'yes': return 100;
+            case 'little': return 50;
+            case 'no': return 0;
+            default: return 0;
+        }
+    },
+
+    // Update user patterns based on data
+    updateUserPatterns(data) {
+        const patterns = data.intelligence.userPatterns;
+        
+        // Calculate most dominant states (by frequency)
+        const stateCounts = {};
+        data.sessionHistory.forEach(s => {
+            if (s.state) {
+                stateCounts[s.state] = (stateCounts[s.state] || 0) + 1;
+            }
+        });
+        
+        patterns.dominantStates = Object.entries(stateCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([state, count]) => ({ state, count }));
+        
+        // Calculate best/worst times
+        const timeStats = [];
+        for (const [hour, stat] of Object.entries(data.intelligence.timeEffectiveness)) {
+            if (stat.total >= 3) { // Only consider times with enough data
+                const effectiveness = (stat.success / stat.total) * 100;
+                timeStats.push({ hour: parseInt(hour), effectiveness, total: stat.total });
+            }
+        }
+        
+        patterns.bestTimes = timeStats
+            .sort((a, b) => b.effectiveness - a.effectiveness)
+            .slice(0, 3);
+            
+        patterns.worstTimes = timeStats
+            .sort((a, b) => a.effectiveness - b.effectiveness)
+            .slice(0, 3);
+        
+        // Calculate most/least effective interventions
+        const interventionStats = [];
+        for (const [state, interventions] of Object.entries(data.intelligence.stateEffectiveness)) {
+            for (const [intervention, stat] of Object.entries(interventions)) {
+                if (stat.total >= 2) { // Only consider interventions tried multiple times
+                    const effectiveness = (stat.success / stat.total) * 100;
+                    interventionStats.push({
+                        state,
+                        intervention,
+                        effectiveness,
+                        total: stat.total,
+                        success: stat.success
+                    });
+                }
+            }
+        }
+        
+        patterns.mostEffectiveInterventions = interventionStats
+            .sort((a, b) => b.effectiveness - a.effectiveness)
+            .slice(0, 5);
+            
+        patterns.leastEffectiveInterventions = interventionStats
+            .sort((a, b) => a.effectiveness - b.effectiveness)
+            .slice(0, 5);
+        
+        // Update average effectiveness
+        const allSessions = data.sessionHistory.filter(s => s.feedback);
+        if (allSessions.length > 0) {
+            const totalScore = allSessions.reduce((sum, s) => {
+                return sum + this.calculateEffectivenessScore(s.feedback);
+            }, 0);
+            data.appStats.avgEffectiveness = Math.round(totalScore / allSessions.length);
+        }
+    },
+
+    // Update adaptation level (1-5)
+    updateAdaptationLevel(data) {
+        const totalSessions = data.userProfile.totalSessions;
+        const successRate = data.appStats.avgEffectiveness;
+        
+        let newLevel = 1;
+        
+        if (totalSessions >= 20 && successRate >= 70) newLevel = 5;
+        else if (totalSessions >= 15 && successRate >= 60) newLevel = 4;
+        else if (totalSessions >= 10 && successRate >= 50) newLevel = 3;
+        else if (totalSessions >= 5 && successRate >= 40) newLevel = 2;
+        else newLevel = 1;
+        
+        // Only increase level, don't decrease (prevents frustration)
+        if (newLevel > data.userProfile.adaptationLevel) {
+            data.userProfile.adaptationLevel = newLevel;
+        }
+    },
+
+    // Generate personalized insight
+    generatePersonalizedInsight(data, session) {
+        if (data.sessionHistory.length < 3) return;
+        
+        const recentSessions = data.sessionHistory.slice(-10);
+        const patterns = data.intelligence.userPatterns;
+        
+        // Generate insight based on actual user data
+        let insight = "";
+        
+        // Check for improvement trends
+        if (recentSessions.length >= 5) {
+            const recentSuccess = recentSessions.filter(s => s.feedback === 'yes').length;
+            const recentEffectiveness = (recentSuccess / recentSessions.length) * 100;
+            
+            const olderSessions = data.sessionHistory.slice(-20, -10);
+            if (olderSessions.length >= 5) {
+                const olderSuccess = olderSessions.filter(s => s.feedback === 'yes').length;
+                const olderEffectiveness = (olderSuccess / olderSessions.length) * 100;
+                
+                if (recentEffectiveness > olderEffectiveness + 15) {
+                    insight = `Your regulation effectiveness improved by ${Math.round(recentEffectiveness - olderEffectiveness)}% recently. Your nervous system is learning to self-regulate more efficiently.`;
+                }
+            }
+        }
+        
+        // If no improvement insight, check for patterns
+        if (!insight && patterns.dominantStates.length > 0) {
+            const dominantState = patterns.dominantStates[0];
+            const stateName = getStateDisplayName(dominantState.state);
+            const percentage = Math.round((dominantState.count / Math.min(data.sessionHistory.length, 10)) * 100);
+            
+            if (percentage >= 40) {
+                insight = `You frequently experience ${stateName.toLowerCase()} (${percentage}% of recent sessions). Let's explore what triggers this pattern.`;
+            }
+        }
+        
+        // Check for time patterns
+        if (!insight && patterns.bestTimes.length > 0 && patterns.bestTimes[0].total >= 3) {
+            const bestTime = patterns.bestTimes[0];
+            if (bestTime.effectiveness >= 80) {
+                const timeLabel = bestTime.hour < 12 ? 'morning' : bestTime.hour < 17 ? 'afternoon' : 'evening';
+                insight = `Your regulation is most effective in the ${timeLabel} (${bestTime.effectiveness}% success rate). Consider scheduling important tasks during this time.`;
+            }
+        }
+        
+        // Default insight if none generated
+        if (!insight) {
+            insight = this.generateDefaultInsight(data, session);
+        }
+        
+        // Save the insight
+        const insightObj = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            text: insight,
+            type: 'personalized',
+            dataBased: true,
+            relevantTo: session.state || 'general'
+        };
+        
+        data.patternInsights.push(insightObj);
+        
+        // Keep only last 20 insights
+        if (data.patternInsights.length > 20) {
+            data.patternInsights = data.patternInsights.slice(-20);
+        }
+        
+        return insightObj;
+    },
+
+    // Generate default insight based on data
+    generateDefaultInsight(data, session) {
+        const totalSessions = data.userProfile.totalSessions;
+        
+        if (totalSessions < 3) {
+            return "Complete a few more sessions to unlock personalized insights about your nervous system patterns.";
+        }
+        
+        const successRate = data.appStats.avgEffectiveness;
+        
+        if (successRate >= 70) {
+            return "Your nervous system shows strong regulation capacity. This consistency builds long-term resilience.";
+        } else if (successRate >= 50) {
+            return "You're developing reliable regulation skills. Notice which techniques feel most natural to you.";
+        } else {
+            return "Regulation is a skill that improves with practice. Each attempt strengthens your neural pathways.";
+        }
     },
 
     // Update streak
@@ -154,132 +469,6 @@ const STORAGE = {
         } else {
             data.userProfile.currentStreak = 0;
         }
-    },
-
-    // Generate psychological insight
-    generatePsychologicalInsight(data, session) {
-        if (data.sessionHistory.length < 3) return;
-        
-        const recentSessions = data.sessionHistory.slice(-10);
-        
-        // Pattern recognition
-        const insight = {
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            dominantPattern: this.identifyDominantPattern(recentSessions),
-            effectivenessTrend: this.calculateEffectivenessTrend(recentSessions),
-            timePattern: this.identifyTimePattern(recentSessions),
-            stateFrequency: this.calculateStateFrequency(recentSessions),
-            psychologicalTip: this.generatePsychologicalTip(recentSessions)
-        };
-        
-        data.patternInsights.push(insight);
-        
-        // Keep only last 10 insights
-        if (data.patternInsights.length > 10) {
-            data.patternInsights = data.patternInsights.slice(-10);
-        }
-        
-        this.setData(data);
-        return insight;
-    },
-
-    // Identify dominant pattern
-    identifyDominantPattern(sessions) {
-        if (sessions.length < 3) return null;
-        
-        const stateCount = {};
-        sessions.forEach(s => {
-            if (s.state) {
-                stateCount[s.state] = (stateCount[s.state] || 0) + 1;
-            }
-        });
-        
-        const mostFrequent = Object.entries(stateCount)
-            .sort((a, b) => b[1] - a[1])[0];
-        
-        if (mostFrequent && mostFrequent[1] >= sessions.length * 0.4) {
-            return {
-                state: mostFrequent[0],
-                frequency: mostFrequent[1],
-                percentage: Math.round((mostFrequent[1] / sessions.length) * 100)
-            };
-        }
-        
-        return null;
-    },
-
-    // Calculate effectiveness trend
-    calculateEffectivenessTrend(sessions) {
-        if (sessions.length < 4) return 'insufficient_data';
-        
-        const half = Math.floor(sessions.length / 2);
-        const firstHalf = sessions.slice(0, half);
-        const secondHalf = sessions.slice(half);
-        
-        const effectiveness1 = firstHalf.filter(s => s.feedback === 'yes').length / firstHalf.length;
-        const effectiveness2 = secondHalf.filter(s => s.feedback === 'yes').length / secondHalf.length;
-        
-        if (effectiveness2 > effectiveness1 + 0.15) return 'improving';
-        if (effectiveness2 < effectiveness1 - 0.15) return 'declining';
-        return 'stable';
-    },
-
-    // Identify time pattern
-    identifyTimePattern(sessions) {
-        const times = sessions.map(s => {
-            const hour = new Date(s.timestamp).getHours();
-            if (hour < 12) return 'morning';
-            if (hour < 17) return 'afternoon';
-            return 'evening';
-        });
-        
-        const timeCount = { morning: 0, afternoon: 0, evening: 0 };
-        times.forEach(time => timeCount[time]++);
-        
-        const mostCommon = Object.entries(timeCount)
-            .sort((a, b) => b[1] - a[1])[0];
-        
-        return mostCommon[0];
-    },
-
-    // Calculate state frequency
-    calculateStateFrequency(sessions) {
-        const stateCount = {};
-        sessions.forEach(s => {
-            if (s.state) {
-                stateCount[s.state] = (stateCount[s.state] || 0) + 1;
-            }
-        });
-        
-        return Object.entries(stateCount)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4); // Top 4 states
-    },
-
-    // Generate psychological tip based on patterns
-    generatePsychologicalTip(sessions) {
-        const patterns = this.identifyDominantPattern(sessions);
-        const trend = this.calculateEffectivenessTrend(sessions);
-        
-        if (patterns && patterns.percentage > 50) {
-            const state = patterns.state;
-            const tips = {
-                'CognitiveOverdrive': 'Your brain is showing a pattern of cognitive overload. Try scheduling "thinking breaks" before overwhelm sets in.',
-                'SomaticTension': 'Your body is holding tension consistently. Consider a daily 5-minute body scan to release stored stress.',
-                'RecoveryDebt': 'You\'re accumulating recovery debt. Schedule intentional rest before exhaustion hits.',
-                'Hypervigilance': 'Your nervous system is often on high alert. Practice grounding techniques throughout the day.',
-                'EmotionalLoad': 'You experience frequent emotional waves. Try naming emotions as they arise to create distance.',
-                'ShutdownDrift': 'You tend toward shutdown when overwhelmed. Set micro-reminders to stay present.'
-            };
-            return tips[state] || 'Consistent regulation builds nervous system resilience.';
-        }
-        
-        if (trend === 'improving') {
-            return 'Your regulation effectiveness is improving! This shows your nervous system is learning to self-regulate.';
-        }
-        
-        return 'Regular regulation strengthens the vagus nerve, improving your stress response over time.';
     },
 
     // Get session history
@@ -303,7 +492,7 @@ const STORAGE = {
         });
     },
 
-    // Get statistics with psychological insights
+    // Get statistics with intelligence insights
     getStats() {
         const history = this.getSessionHistory(30);
         const weeklyHistory = this.getSessionHistory('week');
@@ -319,38 +508,149 @@ const STORAGE = {
         
         const totalSessions = history.length;
         const yesCount = feedbackCounts.yes || 0;
-        const effectivenessRate = totalSessions > 0 ? Math.round((yesCount / totalSessions) * 100) : 0;
+        const littleCount = feedbackCounts.little || 0;
+        const noCount = feedbackCounts.no || 0;
         
-        const durations = history.map(s => s.duration || 0).filter(d => d > 0);
-        const avgDuration = durations.length > 0 
-            ? Math.round(durations.reduce((a, b) => a + b) / durations.length)
+        // Calculate weighted effectiveness (yes=100%, little=50%, no=0%)
+        const effectivenessRate = totalSessions > 0 
+            ? Math.round(((yesCount * 100) + (littleCount * 50)) / totalSessions)
             : 0;
         
-        // Calculate state distribution
+        // Calculate state distribution with effectiveness
         const stateFrequency = {};
+        const stateEffectiveness = {};
+        
         history.forEach(session => {
             if (session.state) {
                 stateFrequency[session.state] = (stateFrequency[session.state] || 0) + 1;
+                
+                if (!stateEffectiveness[session.state]) {
+                    stateEffectiveness[session.state] = { success: 0, total: 0 };
+                }
+                stateEffectiveness[session.state].total++;
+                if (session.feedback === 'yes') stateEffectiveness[session.state].success++;
             }
         });
         
-        // Get latest psychological insight
+        // Calculate effectiveness per state
+        const stateEffectivenessRates = {};
+        for (const [state, stats] of Object.entries(stateEffectiveness)) {
+            stateEffectivenessRates[state] = stats.total > 0 
+                ? Math.round((stats.success / stats.total) * 100)
+                : 0;
+        }
+        
+        // Get latest personalized insight
         const latestInsight = data.patternInsights.slice(-1)[0];
+        
+        // Get user patterns
+        const userPatterns = data.intelligence.userPatterns;
+        
+        // Calculate improvement
+        let improvement = 0;
+        if (history.length >= 10) {
+            const recent = history.slice(-5);
+            const older = history.slice(-10, -5);
+            
+            const recentEffectiveness = recent.filter(s => s.feedback === 'yes').length / recent.length * 100;
+            const olderEffectiveness = older.filter(s => s.feedback === 'yes').length / older.length * 100;
+            
+            improvement = Math.round(recentEffectiveness - olderEffectiveness);
+        }
         
         return {
             totalSessions,
             effectivenessRate,
-            avgDuration,
+            improvement,
             feedbackCounts,
             stateFrequency,
+            stateEffectiveness: stateEffectivenessRates,
             last7Days: this.getSessionHistory(7).length,
             returnToBaselineCount: yesCount,
+            partialSuccessCount: littleCount,
+            noSuccessCount: noCount,
             weeklyStats: data.weeklyStats,
             currentStreak: data.userProfile.currentStreak || 0,
             bestStreak: data.userProfile.bestStreak || 0,
-            psychologicalInsight: latestInsight,
-            patterns: this.identifyDominantPattern(history)
+            adaptationLevel: data.userProfile.adaptationLevel || 1,
+            personalizedInsight: latestInsight,
+            userPatterns: userPatterns,
+            intelligence: {
+                bestTimes: userPatterns.bestTimes,
+                worstTimes: userPatterns.worstTimes,
+                mostEffectiveInterventions: userPatterns.mostEffectiveInterventions,
+                leastEffectiveInterventions: userPatterns.leastEffectiveInterventions,
+                dominantStates: userPatterns.dominantStates
+            },
+            avgEffectiveness: data.appStats.avgEffectiveness || 0
         };
+    },
+
+    // Get recommended intervention for a state based on intelligence
+    getRecommendedIntervention(state) {
+        const data = this.getData();
+        if (!data || !data.intelligence.stateEffectiveness[state]) {
+            return null; // No data yet, will use default
+        }
+        
+        const interventions = data.intelligence.stateEffectiveness[state];
+        let bestIntervention = null;
+        let bestScore = -1;
+        
+        for (const [intervention, stats] of Object.entries(interventions)) {
+            if (stats.total >= 2) { // Need at least 2 attempts for reliable data
+                // Calculate weighted score (success * 100 + partial * 50) / total
+                const score = ((stats.success * 100) + (stats.partial * 50)) / stats.total;
+                
+                // Add recency bonus (within last 7 days)
+                if (stats.lastAttempt) {
+                    const daysSince = (Date.now() - new Date(stats.lastAttempt).getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysSince <= 7) {
+                        score += 10 * (1 - (daysSince / 7)); // Bonus up to 10 points
+                    }
+                }
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIntervention = intervention;
+                }
+            }
+        }
+        
+        return bestIntervention;
+    },
+
+    // Get personalized neuroscience insight
+    getPersonalizedNeuroscienceTip(state = null) {
+        const data = this.getData();
+        const stats = this.getStats();
+        
+        if (!stats || stats.totalSessions < 5) {
+            return "The vagus nerve regulates your stress response. Regular practice strengthens this connection.";
+        }
+        
+        // Generate data-driven tip
+        if (state && stats.stateEffectiveness[state]) {
+            const effectiveness = stats.stateEffectiveness[state];
+            const stateName = getStateDisplayName(state);
+            
+            if (effectiveness >= 70) {
+                return `Your nervous system responds well to ${stateName} regulation (${effectiveness}% effective). This suggests strong vagal tone for this state.`;
+            } else if (effectiveness >= 50) {
+                return `You're building resilience for ${stateName} (${effectiveness}% effective). Each session strengthens the prefrontal cortex's regulation capacity.`;
+            } else {
+                return `For ${stateName}, try different techniques. The amygdala may need varied approaches to signal safety effectively.`;
+            }
+        }
+        
+        // General tip based on overall effectiveness
+        if (stats.effectivenessRate >= 70) {
+            return "High effectiveness suggests strong vagal tone. Your nervous system efficiently returns to baseline after stress.";
+        } else if (stats.effectivenessRate >= 50) {
+            return "Moderate effectiveness shows developing regulation skills. The prefrontal cortex is learning to modulate emotional responses.";
+        } else {
+            return "Practice builds neural pathways. Each regulation attempt strengthens the connection between prefrontal cortex and amygdala.";
+        }
     },
 
     // Update user setting
@@ -369,7 +669,6 @@ const STORAGE = {
         const data = this.getData();
         if (data && data.userProfile) {
             if (key === 'preferences' && typeof value === 'object') {
-                // Merge preferences object
                 data.userProfile.preferences = {
                     ...(data.userProfile.preferences || {}),
                     ...value
@@ -421,7 +720,6 @@ const STORAGE = {
             const importedData = JSON.parse(jsonString);
             const currentData = this.getData();
             
-            // Merge data carefully
             const mergedData = {
                 ...currentData,
                 ...importedData,
