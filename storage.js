@@ -20,7 +20,10 @@ const STORAGE = {
                     totalReturnToBaseline: 0,
                     psychologicalPatterns: [],
                     currentStreak: 0,
-                    bestStreak: 0
+                    bestStreak: 0,
+                    preferences: {
+                        ambientAudio: false
+                    }
                 },
                 appStats: {
                     totalSessions: 0,
@@ -365,7 +368,15 @@ const STORAGE = {
     updateProfile(key, value) {
         const data = this.getData();
         if (data && data.userProfile) {
-            data.userProfile[key] = value;
+            if (key === 'preferences' && typeof value === 'object') {
+                // Merge preferences object
+                data.userProfile.preferences = {
+                    ...(data.userProfile.preferences || {}),
+                    ...value
+                };
+            } else {
+                data.userProfile[key] = value;
+            }
             this.setData(data);
             return true;
         }
@@ -419,10 +430,6 @@ const STORAGE = {
                 userProfile: {
                     ...currentData?.userProfile,
                     ...importedData.userProfile
-                },
-                settings: {
-                    ...currentData?.settings,
-                    ...importedData.settings
                 }
             };
             
