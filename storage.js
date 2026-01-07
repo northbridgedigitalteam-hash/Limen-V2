@@ -1,7 +1,7 @@
 // Local Storage Management
 const STORAGE = {
     KEY: 'limen_v1',
-    VERSION: '1.0.1',
+    VERSION: '1.1.0',
     
     // Initialize storage
     init() {
@@ -14,7 +14,11 @@ const STORAGE = {
                 userProfile: {
                     joined: new Date().toISOString(),
                     notificationEnabled: false,
-                    lastStateSelection: null
+                    lastStateSelection: null,
+                    lastSelectedState: null,
+                    lastSummaryShown: null,
+                    lastMondayPrompt: null,
+                    totalReturnToBaseline: 0
                 },
                 settings: {
                     darkMode: true,
@@ -25,13 +29,51 @@ const STORAGE = {
                 appStats: {
                     totalSessions: 0,
                     totalTime: 0,
+                    totalReturnToBaseline: 0,
                     firstUse: new Date().toISOString(),
                     lastUse: null
+                },
+                weeklyStats: {
+                    currentWeekStart: this.getWeekStartDate(),
+                    sessionsThisWeek: 0,
+                    returnToBaselineThisWeek: 0
                 }
             };
             this.setData(data);
         }
+        
+        // Update week tracking if needed
+        this.updateWeekTracking();
         return data;
+    },
+
+    // Get week start date (Monday)
+    getWeekStartDate() {
+        const now = new Date();
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+        const monday = new Date(now.setDate(diff));
+        monday.setHours(0, 0, 0, 0);
+        return monday.toISOString();
+    },
+
+    // Check and update week tracking
+    updateWeekTracking() {
+        const data = this.getData();
+        if (!data) return;
+        
+        const currentWeekStart = this.getWeekStartDate();
+        const storedWeekStart = data.weeklyStats.currentWeekStart;
+        
+        if (storedWeekStart !== currentWeekStart) {
+            // New week, reset weekly stats
+            data.weeklyStats = {
+                currentWeekStart: currentWeekStart,
+                sessionsThisWeek: 0,
+                returnToBaselineThisWeek: 0
+            };
+            this.setData(data);
+        }
     },
 
     // Get all data
@@ -63,6 +105,7 @@ const STORAGE = {
         
         session.id = Date.now() + Math.random().toString(36).substr(2, 9);
         session.timestamp = new Date().toISOString();
+        session.week = this.getWeekStartDate(); // Track which week
         
         data.sessionHistory.push(session);
         
@@ -71,9 +114,19 @@ const STORAGE = {
         data.appStats.totalTime += (session.duration || 0);
         data.appStats.lastUse = session.timestamp;
         
-        // Keep only last 200 sessions
-        if (data.sessionHistory.length > 200) {
-            data.sessionHistory = data.sessionHistory.slice(-200);
+        // Update weekly stats
+        data.weeklyStats.sessionsThisWeek++;
+        
+        // Track return to baseline
+        if (session.returnedToBaseline) {
+            data.appStats.totalReturnToBaseline++;
+            data.userProfile.totalReturnToBaseline++;
+            data.weeklyStats.returnToBaselineThisWeek++;
+        }
+        
+        // Keep only last 500 sessions
+        if (data.sessionHistory.length > 500) {
+            data.sessionHistory = data.sessionHistory.slice(-500);
         }
         
         this.setData(data);
@@ -86,6 +139,12 @@ const STORAGE = {
         if (!data || !data.sessionHistory) return [];
         
         if (days === 'all') return data.sessionHistory;
+        if (days === 'week') {
+            const weekStart = this.getWeekStartDate();
+            return data.sessionHistory.filter(session => 
+                session.week === weekStart
+            );
+        }
         
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
@@ -95,84 +154,44 @@ const STORAGE = {
         });
     },
 
-    // Get last session
-    getLastSession() {
-        const data = this.getData();
-        if (!data || !data.sessionHistory.length) return null;
-        
-        return data.sessionHistory[data.sessionHistory.length - 1];
-    },
-
     // Get statistics
     getStats() {
         const history = this.getSessionHistory(30);
         if (history.length === 0) return null;
         
         const feedbackCounts = history.reduce((acc, session) => {
-            acc[session.feedback] = (acc[session.feedback] || 0) + 1;
+            const feedback = session.feedback || 'none';
+            acc[feedback] = (acc[feedback] || 0) + 1;
             return acc;
         }, {});
         
         const totalSessions = history.length;
-        const effectivenessRate = feedbackCounts.yes ? 
-            Math.round((feedbackCounts.yes / totalSessions) * 100) : 0;
+        const yesCount = feedbackCounts.yes || 0;
+        const effectivenessRate = Math.round((yesCount / totalSessions) * 100);
         
-        const avgDuration = Math.round(
-            history.reduce((sum, session) => sum + (session.duration || 0), 0) / totalSessions
-        );
+        const durations = history.map(s => s.duration || 0).filter(d => d > 0);
+        const avgDuration = durations.length > 0 
+            ? Math.round(durations.reduce((a, b) => a + b) / durations.length)
+            : 0;
         
-        // Calculate streak (consecutive days with at least one session)
-        const daysWithSessions = [...new Set(
-            history.map(s => new Date(s.timestamp).toDateString())
-        )].length;
+        // Calculate state distribution
+        const stateFrequency = {};
+        history.forEach(session => {
+            if (session.state) {
+                stateFrequency[session.state] = (stateFrequency[session.state] || 0) + 1;
+            }
+        });
         
         return {
             totalSessions,
             effectivenessRate,
             avgDuration,
             feedbackCounts,
+            stateFrequency,
             last7Days: this.getSessionHistory(7).length,
-            daysWithSessions,
-            currentStreak: this.calculateCurrentStreak()
+            returnToBaselineCount: yesCount,
+            weeklyStats: this.getData()?.weeklyStats || {}
         };
-    },
-
-    // Calculate current streak
-    calculateCurrentStreak() {
-        const history = this.getSessionHistory('all');
-        if (history.length === 0) return 0;
-        
-        const today = new Date().toDateString();
-        const dates = [...new Set(
-            history.map(s => new Date(s.timestamp).toDateString())
-        )].sort();
-        
-        let streak = 0;
-        let currentDate = new Date();
-        
-        // Check consecutive days backward from today
-        while (true) {
-            const dateStr = currentDate.toDateString();
-            if (dates.includes(dateStr)) {
-                streak++;
-                currentDate.setDate(currentDate.getDate() - 1);
-            } else {
-                break;
-            }
-        }
-        
-        return streak;
-    },
-
-    // Update user setting
-    updateSetting(key, value) {
-        const data = this.getData();
-        if (data && data.settings) {
-            data.settings[key] = value;
-            this.setData(data);
-            return true;
-        }
-        return false;
     },
 
     // Update user profile
@@ -184,21 +203,6 @@ const STORAGE = {
             return true;
         }
         return false;
-    },
-
-    // Enable notifications
-    enableNotifications() {
-        return this.updateProfile('notificationEnabled', true);
-    },
-
-    // Disable notifications
-    disableNotifications() {
-        return this.updateProfile('notificationEnabled', false);
-    },
-
-    // Record state selection
-    recordStateSelection() {
-        return this.updateProfile('lastStateSelection', new Date().toISOString());
     },
 
     // Clear all data
@@ -216,36 +220,6 @@ const STORAGE = {
     // Export data as JSON
     exportData() {
         return JSON.stringify(this.getData(), null, 2);
-    },
-
-    // Import data from JSON
-    importData(jsonString) {
-        try {
-            const importedData = JSON.parse(jsonString);
-            const currentData = this.getData();
-            
-            // Merge data carefully
-            const mergedData = {
-                ...currentData,
-                ...importedData,
-                version: this.VERSION,
-                sessionHistory: [...(currentData?.sessionHistory || []), ...(importedData.sessionHistory || [])],
-                userProfile: {
-                    ...currentData?.userProfile,
-                    ...importedData.userProfile
-                },
-                settings: {
-                    ...currentData?.settings,
-                    ...importedData.settings
-                }
-            };
-            
-            this.setData(mergedData);
-            return true;
-        } catch (error) {
-            console.error('Error importing data:', error);
-            return false;
-        }
     }
 };
 
