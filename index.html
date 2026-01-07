@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIMEN</title>
+    <meta name="description" content="Nervous system regulation in under 120 seconds">
+    <meta name="theme-color" content="#1c1c23">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- iOS Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚫</text></svg>">
+</head>
+<body>
+    <!-- App Container -->
+    <div id="app">
+        <!-- Screen 1: Entry -->
+        <div id="screen-entry" class="screen active">
+            <div class="content">
+                <h1>Pause.</h1>
+                <button id="btn-continue" class="btn-primary">Continue</button>
+            </div>
+            <div class="brand">LIMEN</div>
+        </div>
+
+        <!-- Screen 2: State Selection -->
+        <div id="screen-state" class="screen">
+            <div class="content">
+                <h2>Which is closest right now?</h2>
+                <div class="state-buttons">
+                    <button class="btn-state" data-state="CognitiveOverdrive">Overloaded</button>
+                    <button class="btn-state" data-state="SomaticTension">Tense</button>
+                    <button class="btn-state" data-state="RecoveryDebt">Drained</button>
+                    <button class="btn-state" data-state="AnticipatoryStress">On edge</button>
+                </div>
+            </div>
+            <div class="brand">LIMEN</div>
+        </div>
+
+        <!-- Screen 3: Intervention -->
+        <div id="screen-intervention" class="screen">
+            <div class="content">
+                <h2 id="intervention-title">Do this now.</h2>
+                <p id="intervention-text" class="intervention-text"></p>
+                
+                <!-- Timer Container -->
+                <div class="timer-container">
+                    <svg class="timer-svg" viewBox="0 0 100 100">
+                        <circle class="timer-background" cx="50" cy="50" r="45"></circle>
+                        <circle class="timer-fill" cx="50" cy="50" r="45"></circle>
+                    </svg>
+                    <div class="timer-text" id="timer-text">90</div>
+                </div>
+            </div>
+            <div class="brand">LIMEN</div>
+        </div>
+
+        <!-- Screen 4: Feedback -->
+        <div id="screen-feedback" class="screen">
+            <div class="content">
+                <h2>Closer to baseline?</h2>
+                <div class="feedback-buttons">
+                    <button class="btn-feedback" data-feedback="yes">Yes</button>
+                    <button class="btn-feedback" data-feedback="little">A little</button>
+                    <button class="btn-feedback" data-feedback="no">No</button>
+                </div>
+                <p id="feedback-message" class="feedback-message"></p>
+            </div>
+            <div class="brand">LIMEN</div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="stateEngine.js"></script>
+    <script src="interventions.js"></script>
+    <script src="storage.js"></script>
+    <script src="push.js"></script>
+    <script src="app.js"></script>
+    
+    <!-- Register Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('Service Worker registered'))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
